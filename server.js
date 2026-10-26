@@ -33,14 +33,68 @@ app.get("/api/monuments", async (req, res) => {
       spatialReference: { wkid: 4326 }
     });
     const arcgisUrl = `https://services-eu1.arcgis.com/ZOdPfBS3aqqDYPUQ/arcgis/rest/services/National_Heritage_List_for_England_NHLE_v02_VIEW/FeatureServer/6/query?where=1%3D1&geometry=${encodeURIComponent(geom)}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=OBJECTID,ListEntry,Name,SchedDate,hyperlink,area_ha&outSR=4326&f=geojson`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7e3);
-    const arcgisRes = await fetch(arcgisUrl, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!arcgisRes.ok) {
-      throw new Error(`Historic England API error: ${arcgisRes.statusText}`);
-    }
-    const geojsonData = await arcgisRes.json();
+    const cadwWfsUrl = `https://datamap.gov.wales/geoserver/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=inspire-wg:Cadw_SAM&outputFormat=application/json&srsName=EPSG:4326&bbox=${minLon},${minLat},${maxLon},${maxLat},EPSG:4326&maxFeatures=200`;
+    const [heResult, cadwResult] = await Promise.allSettled([
+      (async () => {
+        const c = new AbortController();
+        const t = setTimeout(() => c.abort(), 6500);
+        try {
+          const resp = await fetch(arcgisUrl, { signal: c.signal });
+          clearTimeout(t);
+          if (!resp.ok) return [];
+          const data = await resp.json();
+          return (data.features || []).map((f) => ({
+            ...f,
+            properties: {
+              ...f.properties,
+              ListEntry: f.properties?.ListEntry ? String(f.properties.ListEntry).trim() : f.properties?.OBJECTID ? String(f.properties.OBJECTID) : "",
+              Name: (f.properties?.Name || "Protected Heritage Asset").trim(),
+              SchedDate: f.properties?.SchedDate || "",
+              hyperlink: f.properties?.hyperlink || "",
+              authority: "Historic England",
+              country: "England"
+            }
+          }));
+        } catch {
+          clearTimeout(t);
+          return [];
+        }
+      })(),
+      (async () => {
+        const c = new AbortController();
+        const t = setTimeout(() => c.abort(), 6500);
+        try {
+          const resp = await fetch(cadwWfsUrl, { signal: c.signal });
+          clearTimeout(t);
+          if (!resp.ok) return [];
+          const data = await resp.json();
+          return (data.features || []).map((f) => ({
+            ...f,
+            properties: {
+              ...f.properties,
+              ListEntry: (f.properties?.SAMNumber || f.properties?.RecordNumber || "").toString().trim(),
+              Name: (f.properties?.Name || "Scheduled Ancient Monument (Wales)").trim(),
+              SchedDate: f.properties?.DesignationDate || "",
+              hyperlink: f.properties?.Report || "https://cadw.gov.wales",
+              authority: "Cadw (Wales)",
+              country: "Wales",
+              period: f.properties?.Period ? String(f.properties.Period).trim() : "",
+              siteType: f.properties?.SiteType ? String(f.properties.SiteType).trim() : ""
+            }
+          }));
+        } catch {
+          clearTimeout(t);
+          return [];
+        }
+      })()
+    ]);
+    const heFeatures = heResult.status === "fulfilled" ? heResult.value : [];
+    const cadwFeatures = cadwResult.status === "fulfilled" ? cadwResult.value : [];
+    const combinedFeatures = [...heFeatures, ...cadwFeatures];
+    const geojsonData = {
+      type: "FeatureCollection",
+      features: combinedFeatures
+    };
     monumentCache.set(cacheKey, { timestamp: Date.now(), data: geojsonData });
     return res.json(geojsonData);
   } catch (error) {
@@ -48,7 +102,7 @@ app.get("/api/monuments", async (req, res) => {
     return res.json({
       type: "FeatureCollection",
       features: [],
-      warning: "Unable to reach external ArcGIS REST endpoint: " + (error?.message || "timeout")
+      warning: "Unable to reach external monuments endpoints: " + (error?.message || "timeout")
     });
   }
 });

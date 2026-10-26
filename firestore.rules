@@ -52,8 +52,8 @@ service cloud.firestore {
     }
 
     match /finds/{findId} {
-      allow get: if isSignedIn() && (existing().userId == request.auth.uid || ('isPublic' in existing() && existing().isPublic == true));
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || ('isPublic' in resource.data && resource.data.isPublic == true));
+      allow get: if ('isPublic' in existing() && existing().isPublic == true) || (isSignedIn() && existing().userId == request.auth.uid);
+      allow list: if ('isPublic' in resource.data && resource.data.isPublic == true) || (isSignedIn() && resource.data.userId == request.auth.uid);
       
       allow create: if isSignedIn() &&
         isValidId(findId) &&

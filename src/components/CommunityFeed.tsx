@@ -62,7 +62,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({ onOpenShareModal, 
         setPublicFinds(list);
       },
       error => {
-        handleFirestoreError(error, OperationType.LIST, pathForPublic);
+        console.warn('Community feed real-time listener notice:', error?.message);
       }
     );
 
