@@ -1,0 +1,10 @@
+{
+  "name": "TerraDetect",
+  "description": "Interactive metal detecting companion for logging ground finds, live Scheduled Monument boundary warnings via Historic England and Cadw ArcGIS overlays, and AI coin & artifact valuation with live web auction pricing and Treasure Act compliance.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "TerraDetect UK - Metal Detecting & Monument Map",
+  "short_name": "TerraDetect",
+  "description": "Android-first full-screen metal detecting field companion with live Scheduled Monument boundary alerts, offline IndexedDB sync, and Google AI artifact valuation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["utilities", "navigation", "lifestyle"]
+}

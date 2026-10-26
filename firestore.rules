@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidFind(data) {
+      return data.userId is string &&
+        data.userId.size() <= 128 &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 200 &&
+        data.latitude is number &&
+        data.longitude is number &&
+        (!('userDisplayName' in data) || (data.userDisplayName is string && data.userDisplayName.size() <= 100)) &&
+        (!('generalLocation' in data) || (data.generalLocation is string && data.generalLocation.size() <= 100)) &&
+        (!('isPublic' in data) || data.isPublic is bool) &&
+        (!('likesCount' in data) || data.likesCount is number) &&
+        (!('depth' in data) || (data.depth is string && data.depth.size() <= 50)) &&
+        (!('targetVdi' in data) || (data.targetVdi is string && data.targetVdi.size() <= 50)) &&
+        (!('metalType' in data) || (data.metalType is string && data.metalType.size() <= 50)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
+        (!('customTags' in data) || (data.customTags is list && data.customTags.size() <= 20)) &&
+        (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000000)) &&
+        (!('accuracy' in data) || data.accuracy is number) &&
+        (!('nearScheduledMonument' in data) || data.nearScheduledMonument is bool) &&
+        (!('nearestMonumentName' in data) || (data.nearestMonumentName is string && data.nearestMonumentName.size() <= 200)) &&
+        (!('nearestMonumentDistance' in data) || data.nearestMonumentDistance is number) &&
+        (!('aiAnalysis' in data) || data.aiAnalysis is map) &&
+        (!('createdAt' in data) || data.createdAt is string) &&
+        (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    match /finds/{findId} {
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || ('isPublic' in existing() && existing().isPublic == true));
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || ('isPublic' in resource.data && resource.data.isPublic == true));
+      
+      allow create: if isSignedIn() &&
+        isValidId(findId) &&
+        isValidFind(incoming()) &&
+        incoming().userId == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+        isValidId(findId) &&
+        (
+          (existing().userId == request.auth.uid && incoming().userId == existing().userId && isValidFind(incoming())) ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) && incoming().likesCount is number)
+        );
+
+      allow delete: if isSignedIn() &&
+        isValidId(findId) &&
+        existing().userId == request.auth.uid;
+    }
+  }
+}

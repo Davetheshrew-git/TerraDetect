@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "Find": {
+      "title": "Find",
+      "description": "Metal detecting ground find logged by a user with GPS location, detector readings, AI valuation, and optional public community sharing.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the user who logged the find"
+        },
+        "userDisplayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Detectorist display name or handle"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Name or title of the find"
+        },
+        "depth": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Depth found in ground"
+        },
+        "targetVdi": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Target VDI or metal detector ID"
+        },
+        "metalType": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Detected metal composition"
+        },
+        "customTags": {
+          "type": "array",
+          "description": "List of tags like period, object type"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "Field notes, soil conditions, detector settings"
+        },
+        "latitude": {
+          "type": "number",
+          "description": "WGS84 latitude"
+        },
+        "longitude": {
+          "type": "number",
+          "description": "WGS84 longitude"
+        },
+        "accuracy": {
+          "type": "number",
+          "description": "GPS accuracy in meters"
+        },
+        "generalLocation": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "County or general region (e.g. Wiltshire, UK) for public privacy"
+        },
+        "imageUrl": {
+          "type": "string",
+          "maxLength": 1000000,
+          "description": "Image URL or data URI"
+        },
+        "aiAnalysis": {
+          "type": "object",
+          "description": "AI valuation and historical identification details"
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Whether shared to the detectorist community feed"
+        },
+        "likesCount": {
+          "type": "number",
+          "description": "Number of community kudos/upvotes"
+        },
+        "nearScheduledMonument": {
+          "type": "boolean",
+          "description": "Whether find is within 50m of a scheduled monument"
+        },
+        "nearestMonumentName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Name of nearest scheduled monument if applicable"
+        },
+        "nearestMonumentDistance": {
+          "type": "number",
+          "description": "Distance in meters to nearest monument boundary"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when logged"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when updated"
+        }
+      },
+      "required": ["userId", "title", "latitude", "longitude"]
+    }
+  },
+  "firestore": {
+    "/finds/{findId}": {
+      "schema": "Find",
+      "description": "Collection of metal detecting ground finds"
+    }
+  }
+}
