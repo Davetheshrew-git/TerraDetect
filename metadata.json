@@ -1,6 +1,6 @@
 {
   "name": "TerraDetect",
-  "description": "Interactive metal detecting companion for logging ground finds, live Scheduled Monument boundary warnings via Historic England and Cadw ArcGIS overlays, and AI coin & artifact valuation with live web auction pricing and Treasure Act compliance.",
+  "description": "UK metal detecting field companion with high-resolution Satellite and dynamic Dark & Gold LiDAR terrain mapping, live Historic England and Cadw Scheduled Monument 50m boundary warnings, and 100% private on-device Local Vault storage.",
   "requestFramePermissions": [
     "geolocation"
   ],

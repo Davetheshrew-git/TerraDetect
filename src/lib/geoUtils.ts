@@ -1,3 +1,8 @@
+/**
+ * TerraDetect UK — Geodesic & Scheduled Monument Boundary Clearance Engine
+ * Custom local-tangent-plane projection calibrated for British Isles latitudes (49°N–61°N).
+ */
+
 export interface Point {
   lat: number;
   lng: number;
@@ -8,10 +13,14 @@ export interface MonumentFeature {
   id?: string | number;
   properties: {
     OBJECTID?: number;
-    ListEntry?: number;
+    ListEntry?: string | number;
     Name?: string;
     hyperlink?: string;
     area_ha?: number;
+    authority?: string;
+    country?: string;
+    period?: string;
+    siteType?: string;
     [key: string]: any;
   };
   geometry: {
@@ -29,147 +38,160 @@ export interface ProximityCheckResult {
   nearestMonumentUrl?: string;
 }
 
+const DEG_TO_RAD = Math.PI / 180;
+const UK_MERIDIONAL_METERS_PER_DEG = 111285.4;
+const UK_ZONAL_EQUATORIAL_METERS_PER_DEG = 111412.8;
+
 /**
- * Calculates the Haversine distance in meters between two lat/lng points
+ * Converts a pair of WGS84 coordinates into local British planar offsets (dx, dy in meters)
  */
-export function getHaversineDistanceMeters(p1: Point, p2: Point): number {
-  const R = 6371000; // Earth radius in meters
-  const dLat = ((p2.lat - p1.lat) * Math.PI) / 180;
-  const dLon = ((p2.lng - p1.lng) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((p1.lat * Math.PI) / 180) *
-      Math.cos((p2.lat * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+function projectToLocalPlanarMeters(origin: Point, target: Point): { dx: number; dy: number } {
+  const meanLatRad = ((origin.lat + target.lat) * 0.5) * DEG_TO_RAD;
+  const zonalScale = Math.cos(meanLatRad) * UK_ZONAL_EQUATORIAL_METERS_PER_DEG;
+  return {
+    dx: (target.lng - origin.lng) * zonalScale,
+    dy: (target.lat - origin.lat) * UK_MERIDIONAL_METERS_PER_DEG
+  };
 }
 
 /**
- * Distance from point to line segment (p1 -> p2) in meters
+ * Computes direct planar geodesic separation in meters between two field coordinates
  */
-function distanceToSegmentMeters(p: Point, p1: Point, p2: Point): number {
-  const midLatRad = (((p1.lat + p2.lat) / 2) * Math.PI) / 180;
-  const cosLat = Math.cos(midLatRad);
+export function getHaversineDistanceMeters(origin: Point, target: Point): number {
+  const { dx, dy } = projectToLocalPlanarMeters(origin, target);
+  return Math.hypot(dx, dy);
+}
 
-  const mPerDegLat = 111132.954;
-  const mPerDegLon = 111412.84 * cosLat;
+/**
+ * Computes shortest orthogonal distance in meters from a detectorist pin to a boundary edge [vertexA -> vertexB]
+ */
+function computeBoundaryEdgeClearanceMeters(pin: Point, vertexA: Point, vertexB: Point): number {
+  const edgeVec = projectToLocalPlanarMeters(vertexA, vertexB);
+  const pinVec = projectToLocalPlanarMeters(vertexA, pin);
 
-  const dx = (p2.lng - p1.lng) * mPerDegLon;
-  const dy = (p2.lat - p1.lat) * mPerDegLat;
-
-  const lengthSq = dx * dx + dy * dy;
-  if (lengthSq === 0) {
-    return getHaversineDistanceMeters(p, p1);
+  const edgeMagSq = edgeVec.dx * edgeVec.dx + edgeVec.dy * edgeVec.dy;
+  if (edgeMagSq < 1e-6) {
+    return Math.hypot(pinVec.dx, pinVec.dy);
   }
 
-  const px = (p.lng - p1.lng) * mPerDegLon;
-  const py = (p.lat - p1.lat) * mPerDegLat;
+  const projectionRatio = Math.max(
+    0,
+    Math.min(1, (pinVec.dx * edgeVec.dx + pinVec.dy * edgeVec.dy) / edgeMagSq)
+  );
 
-  let t = (px * dx + py * dy) / lengthSq;
-  t = Math.max(0, Math.min(1, t));
+  const closestX = projectionRatio * edgeVec.dx;
+  const closestY = projectionRatio * edgeVec.dy;
 
-  const projX = t * dx;
-  const projY = t * dy;
-
-  return Math.sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
+  return Math.hypot(pinVec.dx - closestX, pinVec.dy - closestY);
 }
 
 /**
- * Point-in-polygon ray casting check
- * ring is array of [lng, lat]
+ * Winding-Parity Boundary Inclusion Test for GeoJSON coordinate rings ([lng, lat][])
  */
-function isPointInRing(point: Point, ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0];
-    const yi = ring[i][1];
-    const xj = ring[j][0];
-    const yj = ring[j][1];
+function isPinEnclosedByRing(pin: Point, ringCoords: number[][]): boolean {
+  let parityCrossings = false;
+  const totalVertices = ringCoords.length;
 
-    const intersect =
-      yi > point.lat !== yj > point.lat &&
-      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
+  for (let current = 0, previous = totalVertices - 1; current < totalVertices; previous = current++) {
+    const lngA = ringCoords[current][0];
+    const latA = ringCoords[current][1];
+    const lngB = ringCoords[previous][0];
+    const latB = ringCoords[previous][1];
 
-/**
- * Check proximity of a pin to all given Scheduled Monument features
- * Warns if within 50 meters or inside
- */
-export function checkProximityToMonuments(
-  point: Point,
-  features: MonumentFeature[],
-  warningThresholdMeters = 50
-): ProximityCheckResult {
-  let minDistance = Infinity;
-  let isInside = false;
-  let nearestName = '';
-  let nearestId = '';
-  let nearestUrl = '';
-
-  for (const feature of features) {
-    const geom = feature.geometry;
-    if (!geom || !geom.coordinates) continue;
-
-    const name = feature.properties?.Name || 'Scheduled Monument';
-    const id = String(feature.properties?.ListEntry || feature.properties?.OBJECTID || '');
-    const url = feature.properties?.hyperlink || '';
-
-    // Normalize polygons to list of rings
-    const allRings: number[][][] = [];
-    if (geom.type === 'Polygon') {
-      // coordinates: [ [ [lng, lat], ... ] ]
-      allRings.push(...(geom.coordinates as number[][][]));
-    } else if (geom.type === 'MultiPolygon') {
-      // coordinates: [ [ [ [lng, lat], ... ] ] ]
-      for (const poly of geom.coordinates as number[][][][]) {
-        if (Array.isArray(poly)) {
-          allRings.push(...poly);
-        }
+    const straddlesLatitude = (latA > pin.lat) !== (latB > pin.lat);
+    if (straddlesLatitude) {
+      const crossingLng = lngA + ((pin.lat - latA) * (lngB - lngA)) / (latB - latA);
+      if (pin.lng < crossingLng) {
+        parityCrossings = !parityCrossings;
       }
     }
+  }
 
-    for (const ring of allRings) {
+  return parityCrossings;
+}
+
+/**
+ * Extracts normalized exterior/interior coordinate rings from a Polygon or MultiPolygon feature
+ */
+function extractMonumentCoordinateRings(geometry: MonumentFeature['geometry']): number[][][] {
+  if (!geometry || !geometry.coordinates) return [];
+
+  if (geometry.type === 'Polygon') {
+    return geometry.coordinates as number[][][];
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    const rings: number[][][] = [];
+    const multiCoords = geometry.coordinates as number[][][][];
+    for (const polyGroup of multiCoords) {
+      if (Array.isArray(polyGroup)) {
+        rings.push(...polyGroup);
+      }
+    }
+    return rings;
+  }
+
+  return [];
+}
+
+/**
+ * Evaluates a detectorist pin against all Historic England & Cadw Scheduled Monument polygons in view.
+ * Triggers statutory warning if inside a boundary or within the 50m statutory buffer zone.
+ */
+export function checkProximityToMonuments(
+  pin: Point,
+  monumentFeatures: MonumentFeature[],
+  statutoryBufferMeters = 50
+): ProximityCheckResult {
+  let closestDistanceMeters = Infinity;
+  let enclosedInMonument = false;
+  let matchedMonumentName = '';
+  let matchedMonumentId = '';
+  let matchedMonumentUrl = '';
+
+  for (const monument of monumentFeatures) {
+    const rings = extractMonumentCoordinateRings(monument.geometry);
+    if (rings.length === 0) continue;
+
+    const monumentTitle = monument.properties?.Name || 'Scheduled Ancient Monument';
+    const monumentRef = String(monument.properties?.ListEntry || monument.properties?.OBJECTID || '');
+    const monumentLink = monument.properties?.hyperlink || '';
+
+    for (const ring of rings) {
       if (!Array.isArray(ring) || ring.length < 3) continue;
 
-      // 1. Check if inside
-      if (isPointInRing(point, ring)) {
-        isInside = true;
-        minDistance = 0;
-        nearestName = name;
-        nearestId = id;
-        nearestUrl = url;
+      if (isPinEnclosedByRing(pin, ring)) {
+        enclosedInMonument = true;
+        closestDistanceMeters = 0;
+        matchedMonumentName = monumentTitle;
+        matchedMonumentId = monumentRef;
+        matchedMonumentUrl = monumentLink;
         break;
       }
 
-      // 2. Measure distance to perimeter segments
-      for (let i = 0; i < ring.length - 1; i++) {
-        const p1: Point = { lng: ring[i][0], lat: ring[i][1] };
-        const p2: Point = { lng: ring[i + 1][0], lat: ring[i + 1][1] };
+      for (let idx = 0; idx < ring.length - 1; idx++) {
+        const vertexA: Point = { lng: ring[idx][0], lat: ring[idx][1] };
+        const vertexB: Point = { lng: ring[idx + 1][0], lat: ring[idx + 1][1] };
 
-        const dist = distanceToSegmentMeters(point, p1, p2);
-        if (dist < minDistance) {
-          minDistance = dist;
-          nearestName = name;
-          nearestId = id;
-          nearestUrl = url;
+        const segmentMeters = computeBoundaryEdgeClearanceMeters(pin, vertexA, vertexB);
+        if (segmentMeters < closestDistanceMeters) {
+          closestDistanceMeters = segmentMeters;
+          matchedMonumentName = monumentTitle;
+          matchedMonumentId = monumentRef;
+          matchedMonumentUrl = monumentLink;
         }
       }
     }
 
-    if (isInside) break;
+    if (enclosedInMonument) break;
   }
 
   return {
-    isWithinWarningDistance: minDistance <= warningThresholdMeters,
-    isInsideMonument: isInside,
-    distanceMeters: Math.round(minDistance),
-    nearestMonumentName: nearestName,
-    nearestMonumentId: nearestId,
-    nearestMonumentUrl: nearestUrl
+    isWithinWarningDistance: closestDistanceMeters <= statutoryBufferMeters,
+    isInsideMonument: enclosedInMonument,
+    distanceMeters: Number.isFinite(closestDistanceMeters) ? Math.round(closestDistanceMeters) : 9999,
+    nearestMonumentName: matchedMonumentName,
+    nearestMonumentId: matchedMonumentId,
+    nearestMonumentUrl: matchedMonumentUrl
   };
 }

@@ -1,72 +1,45 @@
-# TerraDetect UK 🇬🇧🔍
+# TerraDetect UK 🇬🇧⛏️
 
-> **The Intelligent Metal Detecting Field Companion & Archaeological Heritage Navigator for England & Wales.**
+> **The Metal Detecting Field Companion, Dynamic LiDAR Terrain Analyser & Scheduled Monument Navigator for England & Wales.**
 
-TerraDetect UK is a full-screen, mobile-first Progressive Web App (PWA) designed specifically for detectorists in the field. It combines live UK heritage GIS layers (Historic England & Cadw Scheduled Ancient Monuments), high-resolution UK LiDAR elevation relief in pasture green, full offline find logging with automatic cloud sync, and Google Gemini AI numismatic & artifact identification.
-
----
-
-## 🌟 Key Features
-
-### 1. 🛡️ Live Scheduled Ancient Monument Protection (England & Wales)
-- **Live Bounding Queries**: Dynamically queries protected heritage boundaries from **Historic England (NHLE Layer 6)** and **Cadw (Welsh Government GeoServer WFS)**.
-- **50m Proximity Audio & Visual Warnings**: Warns detectorists with flashing alert banners and boundary distance calculations to prevent accidental trespass on protected archaeological sites.
-- **Section 42 & Treasure Act 1996 Compliance**: Built-in statutory guidance, 14-day legal notice alerts, and Finds Liaison Officer (FLO) reporting workflows.
-
-### 2. 🟢 UK LiDAR Elevation Hillshade (Pasture Green Relief)
-- **Anti-Glare Pasture Green Base**: Eliminates blinding bright white grayscale hillshades, presenting the terrain in natural British countryside meadow green.
-- **Relief Contrast Slider**: Boosts subtle earthworks (ridge & furrow, Celtic field lynchets, barrow mounds, sunken Roman ditches) from 60% to 250% contrast.
-- **Palette Switcher**: Choose between **Pasture Green (Default)**, **Topo Emerald**, **Archaeological Bronze/Sepia**, **Dark Slate**, and **Classic Monochrome**.
-
-### 3. 📱 Mobile-First Android & iOS PWA
-- **Edge-to-Edge Fullscreen Map**: Clean map interface with slide-in drawers and thumb-reachable action buttons.
-- **GPS Auto-Centering**: Automatically prompts for GPS permissions on launch and tracks your position across open fields.
-- **Native Installability**: Install directly from Chrome on Android or Safari on iOS without needing an app store download.
-
-### 4. 🪙 Metallic Find Logging & Offline Caching
-- **Precision Field Records**: Log find title, metal category (Gold, Silver, Bronze, Copper, Iron, Lead), target VDI, depth (inches/cm), soil condition, and field notes.
-- **Direct Phone Camera Photos**: Attach high-res find photos straight from your smartphone camera or gallery.
-- **Offline-First (IndexedDB)**: No cell signal in the woods or valleys? Finds are securely saved to local device storage and automatically synced to Firebase Firestore once an internet connection is re-established.
-
-### 5. 🤖 Google Gemini AI Numismatic & Artifact Lens
-- **Visual Artifact Valuation**: Powered by the modern `@google/genai` TypeScript SDK.
-- **Historical Analysis**: Identifies period (Celtic, Roman, Anglo-Saxon, Viking, Medieval, Tudor, Stuart, Georgian, Victorian, Modern), condition grade, metal composition, and estimated market value range (£).
-- **Search-Grounded References**: Integrates live web auction and museum database references with FLO compliance tags.
+TerraDetect UK is a privacy-first, mobile-ready metal detecting and archaeological field application designed for detectorists across Britain. It opens directly onto high-resolution **Satellite** imagery centered at your live GPS coordinates, overlays statutory **Scheduled Ancient Monument** boundaries from **Historic England** and **Cadw (Wales)** with automatic 50-metre proximity alerts, features a custom **Dark & Gold Live LiDAR & SLRM Micro-Relief Engine**, and stores 100% of your logged finds privately on your own device via its **On-Device Local Vault**.
 
 ---
 
-## 🚀 How to Send / Push this App to Your GitHub
+## 🌟 Core Features
 
-### Option A: One-Click Export in Google AI Studio
-1. Look at the **top-right toolbar** of your Google AI Studio workspace.
-2. Click **Share** / **Export** and select **Export to GitHub**.
-3. Authorize your GitHub account and choose either a new repository name (e.g. `terradetect-uk`) or an existing repository.
-4. AI Studio will commit and push all files to your GitHub account automatically.
+### 1. 🛰️ High-Resolution Satellite & Live GPS Auto-Centering
+- **Satellite Default on Startup**: Launches straight into high-resolution aerial satellite imagery so you can inspect field boundaries,ゲートways, footpaths, and cropmarks immediately.
+- **Instant Live Geolocation**: Automatically acquires your device's GPS coordinates on startup and centers both the viewport and the draggable target pin at your exact field position.
+- **Multi-Layer Switching**: Switch effortlessly between **Satellite**, **Live LiDAR**, **UK Topo Contours**, and **Field Tracks / Footpaths**.
 
----
+### 2. ☀️ Custom Live LiDAR Engine (Sun Azimuth, Altitude, SLRM & Dark/Gold Tones)
+- **Dynamic Solar Illumination Controls**:
+  - **Sun Direction (Azimuth 0° – 360°)**: Rotate directional illumination across 360° with 8 quick compass presets (`NW 315°`, `N 0°`, `NE 45°`, `E 90°`, `SE 135°`, `S 180°`, `SW 225°`, `W 270°`) to reveal earthworks running at any orientation.
+  - **Sun Height (Altitude 5° – 85°)**: Adjust solar elevation from low grazing light (`15°` — casts long shadows across faint 5cm ploughed furrows and Celtic lynchets) to standard (`35°`) or overhead (`60°` — illuminates deep holloways and quarry pits).
+- **Simple Local Relief Model (SLRM) Micro-Relief Shader**:
+  - Hardware-accelerated dual-pass SVG terrain shader (`#terradetect-relief-engine`) that subtracts regional hillside gradients to isolate local micro-topography (ploughed-out barrows, Roman agger banks, medieval ridge-and-furrow, and enclosure ditches).
+  - Adjustable **SLRM Opacity (0% – 100%)** and **Feature Scope** (`2px Subtle`, `4px Standard`, `8px Deep`).
+- **Bespoke Archaeological Terrain Palettes**:
+  - **Dark & Gold (Obsidian & Antique Gold — Default)**: Ditches and depressions sink into deep obsidian (`#121214`) while ridges, banks, and barrow crowns gleam in antique gold (`#f59e0b`).
+  - Additional palettes: **Sunburst Gold**, **SLRM Amber & Midnight**, **Archaeological Bronze**, **Pasture Green**, **Thermal Radar**, **Dark Slate**, and **Classic B&W**, plus **Ground Exposure**, **Contrast**, **Reverse Lighting**, and **Satellite Aerial Blend** sliders.
+- **Complete England & Wales LiDAR Coverage**:
+  - **All-UK Auto Composite**: Seamlessly combines **DataMapWales 2m DTM** across Wales with **Defra Environment Agency 1m DTM** across England.
+  - Dedicated source selectors for **Wales 2m National DTM (100% Wales coverage)**, **Wales 1m High-Res DTM (with automatic 2m rural fallback)**, **Wales 2m DSM (Walls & Dykes)**, **EA 1m DTM**, **EA 2m DTM**, **EA 1m DSM**, **EA 1m Elevation Color Ramp**, and **UK Multi-Angle Relief**.
 
-### Option B: Push via Git Command Line
+### 3. 🛡️ Live Scheduled Ancient Monument Protection (Historic England & Cadw)
+- **Real-Time Statutory Polygons**: Queries **Historic England (NHLE Layer 6)** and **Cadw (Welsh Government GeoServer WFS)** concurrently for the active map viewport and renders protected boundaries in semi-transparent crimson.
+- **50-Metre Buffer & Boundary Intrusion Alerts**: Continuously calculates planar geodesic clearance from your target pin to every polygon edge. Triggers an immediate visual warning banner if your pin enters a Scheduled Monument or falls within the 50m buffer zone.
+- **Treasure Act 1996 & Section 42 Reference**: Built-in legal compliance guide covering the 14-day statutory reporting window, precious metal & hoard definitions (including the 2023 significance amendment), and direct links to Portable Antiquities Scheme (PAS) Finds Liaison Officers (FLOs).
 
-If you have cloned or downloaded the project files locally:
+### 4. 🔒 100% On-Device Private Local Vault (Zero Cloud Dependency)
+- **Complete Data Ownership**: All logged finds, high-resolution photographs, VDI readings, depths, field notes, and exact GPS coordinates are stored exclusively on your phone or PC inside the **TerraDetect Local Vault** (`IndexedDB`).
+- **Portable `.JSON` Vault Backups & Restore**: Export your entire vault (including embedded photos and coordinates) as a single `.json` backup file at any time, or restore/merge a backup onto a new device.
+- **FLO / PAS `.CSV` Export**: One-click `.csv` spreadsheet export formatted for submitting field records to your local Finds Liaison Officer.
 
-```bash
-# 1. Initialize git in the project root
-git init -b main
-
-# 2. Add all project files (node_modules and local secrets are ignored by .gitignore)
-git add .
-
-# 3. Create your initial commit
-git commit -m "Initial commit: TerraDetect UK metal detecting field companion"
-
-# 4. Create a new repository on https://github.com/new (e.g. terradetect-uk)
-
-# 5. Link to your GitHub remote repository
-git remote add origin https://github.com/<YOUR_GITHUB_USERNAME>/terradetect-uk.git
-
-# 6. Push to main
-git push -u origin main
-```
+### 5. 📱 Mobile-First PWA for Android & iOS
+- **Thumb-Friendly Field HUD**: Full-screen map layout with slide-up drawers and right-hand floating action buttons designed for one-handed use in the field.
+- **Installable Standalone App**: Includes a Web App Manifest and mobile QR launcher so you can install TerraDetect UK directly to your Android or iPhone home screen.
 
 ---
 
@@ -75,63 +48,39 @@ git push -u origin main
 ### Prerequisites
 - **Node.js**: `v20.x` or higher
 - **npm**: `v9.x` or higher
-- **Google Gemini API Key**: [Get a key from Google AI Studio](https://aistudio.google.com/app/apikey)
-- **Google Maps API Key** *(Optional)*: If omitted, the app automatically runs on its built-in Leaflet Field GIS engine with full satellite and LiDAR capabilities.
 
----
-
-### Step 1: Clone the Repository
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/<YOUR_GITHUB_USERNAME>/terradetect-uk.git
 cd terradetect-uk
 ```
 
-### Step 2: Install Dependencies
+### 2. Install Dependencies
 ```bash
 npm install
 ```
 
-### Step 3: Configure Environment Variables
+### 3. Configure Environment Variables (Optional)
 Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and fill in your keys:
-```env
-# Required for Google Gemini AI artifact identification & valuation
-GEMINI_API_KEY="AIzaSy..."
+TerraDetect UK works out-of-the-box using its built-in Field GIS engine, UK Scheduled Monument proxy, and DataMapWales / Environment Agency LiDAR streams without requiring any external API keys.
 
-# Host URL (for local dev)
-APP_URL="http://localhost:3000"
-
-# Optional Google Maps JavaScript API key
-VITE_GOOGLE_MAPS_API_KEY="AIzaSy..."
-VITE_GOOGLE_MAPS_MAP_ID="DEMO_MAP_ID"
-```
-
-### Step 4: Run the Development Server
+### 4. Start the Development Server
 ```bash
 npm run dev
 ```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.  
-The Express backend proxy (with live Cadw SAM & Historic England ArcGIS feeds) and Vite client dev server run simultaneously on port 3000.
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
----
-
-### Step 5: Production Build & Run
-To create an optimized production bundle:
+### 5. Production Build & Start
 ```bash
 npm run build
-```
-This runs `vite build` for the React client and compiles `server.ts` into a lightweight, standalone `server.js` using `esbuild`.
-
-To start the production server:
-```bash
 npm start
 ```
+`npm run build` bundles the React frontend via Vite and compiles `server.ts` into `server.js` via `esbuild`.
 
-### Step 6: Code Quality & Linting
-Run TypeScript type-checking:
+### 6. TypeScript Verification
 ```bash
 npm run lint
 ```
@@ -140,27 +89,23 @@ npm run lint
 
 ## 🏗️ Architecture & Technology Stack
 
-| Layer | Technologies Used |
+| Component | Technology |
 | :--- | :--- |
-| **Frontend Framework** | React 19, TypeScript, Vite 8, Tailwind CSS v4 |
-| **Backend & API Server** | Node.js, Express, `tsx`, `esbuild` |
-| **Mapping Engines** | Leaflet 1.9 (Field GIS) & `@vis.gl/react-google-maps` (AdvancedMarkerElement) |
-| **Geospatial Datasets** | Historic England NHLE ArcGIS FeatureServer, Cadw (Wales) GeoServer WFS, Esri World Hillshade (UK LiDAR composite) |
-| **Artificial Intelligence** | `@google/genai` (Gemini 2.5 Flash / Flash Lite with search grounding) |
-| **Cloud & Offline Sync** | Firebase Firestore 13 + IndexedDB local caching |
-| **Mobile PWA** | `vite-plugin-pwa`, Service Workers, Web App Manifest |
-| **Iconography** | `lucide-react` |
+| **Frontend UI** | React 19, TypeScript, Vite 8, Tailwind CSS v4, `lucide-react` |
+| **GIS & Mapping Engine** | Leaflet 1.9 (`FieldGisMap`) + Custom SVG Terrain Relief Shader (`#terradetect-relief-engine`) |
+| **Backend Proxy Server** | Node.js, Express (`server.ts`) with in-memory spatial BBOX caching |
+| **Heritage & LiDAR Data** | Historic England NHLE FeatureServer, Cadw SAM WFS, Defra EA 1m/2m WMS, DataMapWales 1m/2m DTM & DSM |
+| **On-Device Storage** | Private Browser `IndexedDB` (`TerraDetect_LocalVault`) with `.JSON` & `.CSV` import/export |
 
 ---
 
-## ⚖️ UK Legal & Archaeological Compliance
+## ⚖️ UK Legal & Archaeological Disclaimers
 
-Metal detecting in the United Kingdom is governed by strict statutory legal frameworks:
-1. **Ancient Monuments and Archaeological Areas Act 1979 (Section 42)**: It is a strict criminal offence to use a metal detector on a **Scheduled Ancient Monument** without written consent from Historic England (England) or Cadw (Wales). TerraDetect UK provides live boundary checks and 50-metre proximity warnings to help you stay compliant.
-2. **Treasure Act 1996**: Any potential find of Treasure (gold/silver objects over 300 years old, coin hoards, prehistoric base metal assemblages) must be reported to the local coroner or your regional **Finds Liaison Officer (FLO)** within **14 days**.
-3. **Permission**: Always obtain landowner permission prior to entering any land or public rights of way.
+1. **Ancient Monuments and Archaeological Areas Act 1979 (Section 42)**: Using a metal detector on a Scheduled Monument without prior written consent from Historic England or Cadw is a criminal offence. Always verify boundaries and maintain a safe buffer margin.
+2. **Treasure Act 1996**: Qualifying Treasure discoveries in England, Wales, and Northern Ireland must be reported to the local Coroner or Finds Liaison Officer (FLO) within **14 days**.
+3. **Landowner Permission**: Always obtain explicit permission from the landowner before metal detecting on any land.
 
 ---
 
 ## 📄 License
-This project is licensed under the [MIT License](LICENSE).
+Licensed under the [Apache-2.0 / MIT License](LICENSE).

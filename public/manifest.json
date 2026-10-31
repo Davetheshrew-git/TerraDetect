@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "TerraDetect UK - Metal Detecting & Monument Map",
+  "name": "TerraDetect UK - Metal Detecting Satellite, LiDAR & Monument Map",
   "short_name": "TerraDetect",
-  "description": "Android-first full-screen metal detecting field companion with live Scheduled Monument boundary alerts, offline IndexedDB sync, and Google AI artifact valuation.",
+  "description": "UK metal detecting field companion with high-resolution Satellite and dynamic Dark & Gold LiDAR terrain mapping, live Historic England and Cadw Scheduled Monument 50m boundary warnings, and 100% private on-device Local Vault storage.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

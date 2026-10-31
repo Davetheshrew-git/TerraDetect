@@ -1,24 +1,6 @@
-export interface AiValuation {
-  coinType: string;
-  ruler: string;
-  period: string;
-  mintMark: string;
-  conditionGrade: string;
-  estimatedValueMin: number;
-  estimatedValueMax: number;
-  currency: string;
-  confidence: 'High' | 'Moderate' | 'Low';
-  referenceMatches: Array<{
-    title: string;
-    source: string;
-    url: string;
-    priceNote?: string;
-  }>;
-  isPotentialTreasure: boolean;
-  treasureNotes?: string;
-  keyFeatures?: string[];
-  summary: string;
-}
+/**
+ * TerraDetect UK — Domain Types & Heritage Constants
+ */
 
 export interface MetalFind {
   id?: string;
@@ -35,7 +17,6 @@ export interface MetalFind {
   accuracy?: number;
   generalLocation?: string;
   imageUrl?: string;
-  aiAnalysis?: AiValuation;
   isPublic?: boolean;
   likesCount?: number;
   nearScheduledMonument?: boolean;
@@ -79,3 +60,17 @@ export const POPULAR_TAGS = [
   'Gold Stater',
   'Silver Denarius'
 ];
+
+/**
+ * Helper to determine if a find qualifies for UK Treasure Act 1996 review
+ */
+export function isPreciousTreasureCandidate(find: Pick<MetalFind, 'metalType' | 'customTags'>): boolean {
+  const metal = (find.metalType || '').toLowerCase();
+  if (metal.includes('gold') || metal.includes('silver') || metal.includes('electrum')) {
+    return true;
+  }
+  if (metal.includes('bronze') && find.customTags?.some(t => t.toLowerCase().includes('hoard') || t.toLowerCase().includes('axehead'))) {
+    return true;
+  }
+  return false;
+}

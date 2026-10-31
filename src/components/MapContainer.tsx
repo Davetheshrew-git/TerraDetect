@@ -10,24 +10,24 @@ import {
 } from '@vis.gl/react-google-maps';
 import { MonumentFeature, Point, checkProximityToMonuments, ProximityCheckResult } from '../lib/geoUtils';
 import { MetalFind } from '../types';
-import { FieldGisMap, FallbackMapLayer, LidarPalette } from './FieldGisMap';
+import { FieldGisMap, FallbackMapLayer, LidarPalette, LidarSource } from './FieldGisMap';
 import {
   Compass,
   Layers,
-  MapPin,
-  RefreshCw,
-  ShieldAlert,
-  Crosshair,
   Eye,
   EyeOff,
   Navigation,
   Loader2,
-  AlertTriangle,
   Globe,
   Satellite,
   Mountain,
   Scan,
-  SlidersHorizontal
+  SunMedium,
+  Sparkles,
+  Sun,
+  ChevronDown,
+  ChevronUp,
+  Sliders
 } from 'lucide-react';
 
 const API_KEY =
@@ -259,16 +259,6 @@ const GoogleMapContent: React.FC<MapContainerProps & {
               {selectedFindForInfo.depth && <span><strong>Depth:</strong> {selectedFindForInfo.depth}</span>}
               {selectedFindForInfo.targetVdi && <span><strong>VDI:</strong> {selectedFindForInfo.targetVdi}</span>}
             </div>
-            {selectedFindForInfo.aiAnalysis && (
-              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 8px', fontSize: 11, marginTop: 4 }}>
-                <span style={{ fontWeight: 'bold', color: '#92400e' }}>
-                  Est. £{selectedFindForInfo.aiAnalysis.estimatedValueMin} - £{selectedFindForInfo.aiAnalysis.estimatedValueMax}
-                </span>
-                <span style={{ color: '#78716c', fontSize: 10, marginLeft: 4 }}>
-                  ({selectedFindForInfo.aiAnalysis.conditionGrade})
-                </span>
-              </div>
-            )}
           </div>
         </InfoWindow>
       )}
@@ -340,9 +330,26 @@ export const MapContainer: React.FC<MapContainerProps> = ({
   const [monumentsFeatures, setMonumentsFeatures] = useState<MonumentFeature[]>([]);
   const [isLoadingMonuments, setIsLoadingMonuments] = useState(false);
   const [showMonuments, setShowMonuments] = useState(true);
-  const [gisLayer, setGisLayer] = useState<FallbackMapLayer>('satellite');
-  const [lidarContrast, setLidarContrast] = useState<number>(140);
-  const [lidarPalette, setLidarPalette] = useState<LidarPalette>('green');
+  const [gisLayer, setGisLayer] = useState<FallbackMapLayer>('satellite'); // Default to high-resolution Satellite view
+
+  // Archaeological Relief Controls - Defaults to user's desired Dark & Gold
+  const [lidarContrast, setLidarContrast] = useState<number>(205);
+  const [lidarBrightness, setLidarBrightness] = useState<number>(44);
+  const [lidarPalette, setLidarPalette] = useState<LidarPalette>('darkGold'); // Dark Obsidian & Antique Gold
+  const [lidarSource, setLidarSource] = useState<LidarSource>('allWales'); // 100% Wales & UK Complete Coverage default
+  const [lidarOpacity, setLidarOpacity] = useState<number>(0.95);
+  const [invertRelief, setInvertRelief] = useState<boolean>(false);
+
+  // Real-Time Sun Direction, Altitude & SLRM Micro-Relief (TerraDetect Live Relief Engine)
+  const [sunAzimuth, setSunAzimuth] = useState<number>(315); // NW (standard archaeological hillshade angle)
+  const [sunAltitude, setSunAltitude] = useState<number>(35); // 35 degrees altitude
+  const [slrmOpacity, setSlrmOpacity] = useState<number>(0.6); // 60% SLRM
+  const [slrmRadius, setSlrmRadius] = useState<number>(4);
+
+  // Active Tab inside LiDAR Drawer
+  const [activeLidarTab, setActiveLidarTab] = useState<'sun' | 'colors' | 'slrm' | 'sources'>('sun');
+  const [isLidarDrawerOpen, setIsLidarDrawerOpen] = useState<boolean>(false);
+
   const [mapTypeId, setMapTypeId] = useState<string>('hybrid');
   const [gpsCenterTrigger, setGpsCenterTrigger] = useState(0);
   const [isLocating, setIsLocating] = useState(false);
@@ -351,22 +358,15 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     currentPin ? { lat: currentPin.lat, lng: currentPin.lng } : { lat: 51.1789, lng: -1.8262 }
   );
 
-  // Active Map Engine: default to 'fieldGis' if Google Maps auth fails
+  // Active Map Engine
   const [activeEngine, setActiveEngine] = useState<'fieldGis' | 'google'>('fieldGis');
-  const [authWarning, setAuthWarning] = useState<string | null>(null);
 
-  // Catch Google Maps Authentication Failure (e.g. UrlAuthenticationCommonError / Referrer restrictions)
   useEffect(() => {
     (window as any).gm_authFailure = () => {
-      console.warn('Google Maps authentication failure detected (UrlAuthenticationCommonError). Switched to High-Resolution Field GIS Satellite Map.');
-      setAuthWarning(
-        'Google Cloud API key has HTTP Referrer restrictions on Cloud Run domains. TerraDetect has seamlessly activated Field GIS Satellite Map with live Scheduled Monuments.'
-      );
       setActiveEngine('fieldGis');
       setIsMapLoaded(true);
     };
 
-    // Auto-resolve loading spinner after 3 seconds so user is never blocked
     const timer = setTimeout(() => {
       setIsMapLoaded(true);
     }, 3000);
@@ -454,9 +454,21 @@ export const MapContainer: React.FC<MapContainerProps> = ({
     setIsMapLoaded(true);
   }, []);
 
+  const getCompassHeadingName = (deg: number): string => {
+    const norm = ((deg % 360) + 360) % 360;
+    if (norm >= 337.5 || norm < 22.5) return 'N (0°)';
+    if (norm >= 22.5 && norm < 67.5) return 'NE (45°)';
+    if (norm >= 67.5 && norm < 112.5) return 'E (90°)';
+    if (norm >= 112.5 && norm < 157.5) return 'SE (135°)';
+    if (norm >= 157.5 && norm < 202.5) return 'S (180°)';
+    if (norm >= 202.5 && norm < 247.5) return 'SW (225°)';
+    if (norm >= 247.5 && norm < 292.5) return 'W (270°)';
+    return 'NW (315°)';
+  };
+
   return (
-    <div className={className || "relative w-full h-[520px] sm:h-[580px] lg:h-[620px] rounded-2xl overflow-hidden border border-stone-800 shadow-2xl bg-stone-950"}>
-      {/* 1. RENDER ACTIVE MAP ENGINE FIRST */}
+    <div className={className || 'relative w-full h-[540px] sm:h-[600px] lg:h-[660px] rounded-2xl overflow-hidden border border-stone-800 shadow-2xl bg-stone-950'}>
+      {/* 1. RENDER ACTIVE MAP ENGINE */}
       {activeEngine === 'fieldGis' ? (
         <FieldGisMap
           currentPin={currentPin}
@@ -470,7 +482,15 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           showMonuments={showMonuments}
           gpsCenterTrigger={gpsCenterTrigger}
           lidarContrast={lidarContrast}
+          lidarBrightness={lidarBrightness}
           lidarPalette={lidarPalette}
+          lidarSource={lidarSource}
+          lidarOpacity={lidarOpacity}
+          invertRelief={invertRelief}
+          sunAzimuth={sunAzimuth}
+          sunAltitude={sunAltitude}
+          slrmOpacity={slrmOpacity}
+          slrmRadius={slrmRadius}
         />
       ) : (
         <>
@@ -485,7 +505,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
               fullscreenControl={false}
               streetViewControl={false}
               mapTypeControl={false}
-              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
               onClick={(e: MapMouseEvent) => {
                 if (e.detail.latLng) {
                   onPinChange(e.detail.latLng.lat, e.detail.latLng.lng, 3);
@@ -513,25 +532,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
               />
             </Map>
           </APIProvider>
-
-          {/* Bottom-left Legend for Google Maps mode */}
-          <div className="absolute bottom-4 left-4 z-20 flex flex-col sm:flex-row items-start sm:items-center gap-2 pointer-events-none">
-            <div className="bg-stone-900/90 border border-stone-800 text-stone-300 text-xs px-3 py-1.5 rounded-xl shadow-lg backdrop-blur flex items-center space-x-2">
-              <div className="w-3 h-3 rounded bg-rose-500/30 border border-rose-500 shrink-0" />
-              <span>
-                Red Polygons: <strong>Scheduled Monuments</strong> (Protected)
-              </span>
-              {isLoadingMonuments && (
-                <Loader2 className="w-3 h-3 animate-spin text-amber-400 ml-1" />
-              )}
-            </div>
-
-            {currentPin && (
-              <div className="bg-stone-950/90 border border-stone-800 text-stone-400 font-mono text-[11px] px-2.5 py-1 rounded-lg shadow backdrop-blur">
-                Pin: {currentPin.lat.toFixed(5)}, {currentPin.lng.toFixed(5)}
-              </div>
-            )}
-          </div>
         </>
       )}
 
@@ -556,112 +556,91 @@ export const MapContainer: React.FC<MapContainerProps> = ({
               Acquiring satellite imagery, detectorist coordinates, and querying live UK Scheduled Monument boundaries.
             </p>
           </div>
-
-          <div className="flex items-center space-x-1.5 mt-5">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" style={{ animationDelay: '0ms' }} />
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" style={{ animationDelay: '200ms' }} />
-            <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" style={{ animationDelay: '400ms' }} />
-          </div>
         </div>
       )}
 
-      {/* 3. Unified Map Controls (Rendered AFTER map engine with z-[1050] so Leaflet panes never obscure it) */}
-      <div className="absolute top-[68px] sm:top-[74px] left-3 sm:left-4 z-[1050] flex flex-col items-start space-y-2 pointer-events-auto select-none">
-        {/* Layer & Engine Switcher Bar */}
-        <div className="flex items-center space-x-1 bg-stone-900/95 backdrop-blur-xl border border-stone-700/80 p-1 rounded-2xl shadow-2xl max-w-[calc(100vw-24px)] overflow-x-auto no-scrollbar">
-          {/* Satellite Layer Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (activeEngine === 'fieldGis') setGisLayer('satellite');
-              else setMapTypeId('hybrid');
-            }}
-            className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
-              (activeEngine === 'fieldGis' && gisLayer === 'satellite') || (activeEngine === 'google' && mapTypeId === 'hybrid')
-                ? 'bg-amber-500 text-stone-950 shadow-md font-extrabold'
-                : 'text-stone-300 hover:text-white hover:bg-stone-800'
-            }`}
-            title="High-Resolution Satellite Aerial View"
-          >
-            <Satellite className="w-3.5 h-3.5" />
-            <span>Satellite</span>
-          </button>
+      {/* 3. Unified Map Controls (z-[1050] so Leaflet panes never obscure it) */}
+      <div className="absolute top-[68px] sm:top-[74px] left-3 sm:left-4 z-[1050] flex flex-col items-start space-y-2 pointer-events-auto select-none max-w-[calc(100vw-24px)]">
+        {/* Row 1: Layer Switcher */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Layer Bar */}
+          <div className="flex items-center space-x-1 bg-stone-900/95 backdrop-blur-xl border border-stone-700/80 p-1 rounded-2xl shadow-2xl">
+            {/* Satellite Layer */}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeEngine === 'fieldGis') setGisLayer('satellite');
+                else setMapTypeId('hybrid');
+              }}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
+                (activeEngine === 'fieldGis' && gisLayer === 'satellite') || (activeEngine === 'google' && mapTypeId === 'hybrid')
+                  ? 'bg-amber-500 text-stone-950 shadow-md font-extrabold'
+                  : 'text-stone-300 hover:text-white hover:bg-stone-800'
+              }`}
+              title="High-Resolution Satellite Aerial View"
+            >
+              <Satellite className="w-3.5 h-3.5" />
+              <span>Satellite</span>
+            </button>
 
-          {/* High-Resolution UK LiDAR Elevation Hillshade Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (activeEngine !== 'fieldGis') setActiveEngine('fieldGis');
-              setGisLayer('lidar');
-            }}
-            className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
-              activeEngine === 'fieldGis' && gisLayer === 'lidar'
-                ? 'bg-emerald-500 text-stone-950 shadow-md font-extrabold'
-                : 'text-stone-300 hover:text-white hover:bg-stone-800'
-            }`}
-            title="UK LiDAR Hillshade Composite for England & Wales (Reveals faint earthworks & cropmarks)"
-          >
-            <Scan className="w-3.5 h-3.5" />
-            <span>LiDAR</span>
-          </button>
+            {/* High-Resolution Live LiDAR Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeEngine !== 'fieldGis') setActiveEngine('fieldGis');
+                setGisLayer('lidar');
+              }}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
+                activeEngine === 'fieldGis' && gisLayer === 'lidar'
+                  ? 'bg-amber-400 text-stone-950 shadow-md font-extrabold'
+                  : 'text-stone-300 hover:text-white hover:bg-stone-800'
+              }`}
+              title="Live UK LiDAR Hillshade & SLRM Micro-Relief with Sun Position Control"
+            >
+              <Sun className="w-3.5 h-3.5 text-amber-700" />
+              <span>Live LiDAR</span>
+            </button>
 
-          {/* UK Topo Contours Layer */}
-          <button
-            type="button"
-            onClick={() => {
-              if (activeEngine === 'fieldGis') setGisLayer('topo');
-              else setMapTypeId('terrain');
-            }}
-            className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
-              (activeEngine === 'fieldGis' && gisLayer === 'topo') || (activeEngine === 'google' && mapTypeId === 'terrain')
-                ? 'bg-amber-500 text-stone-950 shadow-md font-extrabold'
-                : 'text-stone-300 hover:text-white hover:bg-stone-800'
-            }`}
-            title="UK Topographic Elevation Contours"
-          >
-            <Mountain className="w-3.5 h-3.5" />
-            <span>UK Topo</span>
-          </button>
+            {/* UK Topo Contours */}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeEngine === 'fieldGis') setGisLayer('topo');
+                else setMapTypeId('terrain');
+              }}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
+                (activeEngine === 'fieldGis' && gisLayer === 'topo') || (activeEngine === 'google' && mapTypeId === 'terrain')
+                  ? 'bg-amber-500 text-stone-950 shadow-md font-extrabold'
+                  : 'text-stone-300 hover:text-white hover:bg-stone-800'
+              }`}
+              title="UK Topographic Elevation Contours"
+            >
+              <Mountain className="w-3.5 h-3.5" />
+              <span>Topo</span>
+            </button>
 
-          {/* Field Tracks & Footpaths Layer */}
-          <button
-            type="button"
-            onClick={() => {
-              if (activeEngine === 'fieldGis') setGisLayer('osm');
-              else setMapTypeId('roadmap');
-            }}
-            className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
-              (activeEngine === 'fieldGis' && gisLayer === 'osm') || (activeEngine === 'google' && mapTypeId === 'roadmap')
-                ? 'bg-amber-500 text-stone-950 shadow-md font-extrabold'
-                : 'text-stone-300 hover:text-white hover:bg-stone-800'
-            }`}
-            title="Public Footpaths & Field Tracks"
-          >
-            <Compass className="w-3.5 h-3.5" />
-            <span>Tracks</span>
-          </button>
-
-          <div className="w-[1px] h-5 bg-stone-700/80 mx-0.5 shrink-0" />
-
-          {/* Map Engine Toggle: GIS / Google */}
-          <button
-            type="button"
-            onClick={() => {
-              const next = activeEngine === 'fieldGis' ? 'google' : 'fieldGis';
-              setActiveEngine(next);
-              if (next === 'google') setIsMapLoaded(false);
-            }}
-            className="px-2 py-1.5 text-[11px] font-mono text-stone-400 hover:text-amber-400 hover:bg-stone-800 rounded-xl transition flex items-center space-x-1 cursor-pointer shrink-0"
-            title={activeEngine === 'fieldGis' ? 'Switch to Google Maps Engine' : 'Switch to Field GIS Satellite Engine'}
-          >
-            <Globe className="w-3 h-3" />
-            <span>{activeEngine === 'fieldGis' ? 'GIS' : 'Google'}</span>
-          </button>
+            {/* Field Tracks */}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeEngine === 'fieldGis') setGisLayer('osm');
+                else setMapTypeId('roadmap');
+              }}
+              className={`px-2.5 py-1.5 text-xs font-bold rounded-xl flex items-center space-x-1.5 transition active:scale-95 cursor-pointer shrink-0 ${
+                (activeEngine === 'fieldGis' && gisLayer === 'osm') || (activeEngine === 'google' && mapTypeId === 'roadmap')
+                  ? 'bg-amber-500 text-stone-950 shadow-md font-extrabold'
+                  : 'text-stone-300 hover:text-white hover:bg-stone-800'
+              }`}
+              title="Public Footpaths & Field Tracks"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Tracks</span>
+            </button>
+          </div>
         </div>
 
-        {/* Secondary Row: Scheduled Monuments Toggle & Locate Me GPS */}
+        {/* Row 2: Monuments Toggle & Locate Me */}
         <div className="flex items-center space-x-2">
-          {/* Scheduled Monuments Toggle Button */}
           <button
             type="button"
             onClick={() => setShowMonuments(!showMonuments)}
@@ -681,7 +660,6 @@ export const MapContainer: React.FC<MapContainerProps> = ({
             )}
           </button>
 
-          {/* Locate Me GPS Button */}
           <button
             type="button"
             onClick={handleRequestGps}
@@ -703,171 +681,664 @@ export const MapContainer: React.FC<MapContainerProps> = ({
           </button>
         </div>
 
-        {/* Tertiary Row: LiDAR Palette & Relief Controls (Only visible when LiDAR layer is selected) */}
+        {/* Row 3: COMPLETE REWORKED LIDAR CONTROLS (Sun Position, SLRM Opacity, Dark & Gold Tones, EA & Wales Sources) */}
         {gisLayer === 'lidar' && activeEngine === 'fieldGis' && (
-          <div className="bg-stone-900/95 backdrop-blur-xl border border-emerald-600/60 p-3 rounded-2xl shadow-2xl w-[300px] sm:w-[340px] space-y-2.5 pointer-events-auto transition-all animate-in fade-in duration-200">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-300">
-                <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>LiDAR Relief &amp; Palette</span>
+          <div className="bg-stone-950/95 backdrop-blur-2xl border border-amber-500/60 rounded-2xl shadow-2xl w-[320px] sm:w-[380px] space-y-2.5 pointer-events-auto transition-all animate-in fade-in duration-200 overflow-hidden">
+            {/* Header with Minimize/Expand Toggle */}
+            <div className="flex items-center justify-between p-2.5 pb-2 bg-gradient-to-r from-stone-900 via-stone-900 to-amber-950/40 border-b border-stone-800">
+              <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-300">
+                <Sun className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '20s' }} />
+                <span>Live LiDAR Engine &amp; Sun Controls</span>
               </div>
-              <span className="font-mono text-xs px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 font-bold">
-                {lidarContrast}%
-              </span>
-            </div>
-
-            {/* Base Colour / Palette Selector */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] font-semibold text-stone-300">
-                <span>Base Colour:</span>
-                <span className="text-[10px] text-emerald-400 font-mono capitalize">
-                  {lidarPalette === 'green' ? 'Pasture Green (Default)' : lidarPalette}
+              <div className="flex items-center space-x-1.5">
+                <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/40 text-amber-200 font-mono text-[10px] font-bold">
+                  {getCompassHeadingName(sunAzimuth)}
                 </span>
-              </div>
-              <div className="grid grid-cols-5 gap-1 text-[10px]">
-                {/* Pasture Green Button (Default) */}
                 <button
                   type="button"
-                  onClick={() => setLidarPalette('green')}
-                  className={`px-1.5 py-1.5 rounded-xl border flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
-                    lidarPalette === 'green'
-                      ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 font-bold shadow-md shadow-emerald-950/60'
-                      : 'bg-stone-850 border-stone-750 text-stone-400 hover:text-stone-200'
-                  }`}
-                  title="Pasture Green (Natural field meadow, removes white glare)"
+                  onClick={() => setIsLidarDrawerOpen(!isLidarDrawerOpen)}
+                  className="p-1 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition cursor-pointer"
+                  title={isLidarDrawerOpen ? 'Minimize Controls' : 'Expand Controls'}
                 >
-                  <span className="w-3 h-3 rounded-full bg-emerald-500 border border-emerald-300 shrink-0" />
-                  <span className="truncate">Green</span>
-                </button>
-
-                {/* Topo Emerald Button */}
-                <button
-                  type="button"
-                  onClick={() => setLidarPalette('emerald')}
-                  className={`px-1.5 py-1.5 rounded-xl border flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
-                    lidarPalette === 'emerald'
-                      ? 'bg-teal-600/30 border-teal-400 text-teal-200 font-bold shadow-md shadow-teal-950/60'
-                      : 'bg-stone-850 border-stone-750 text-stone-400 hover:text-stone-200'
-                  }`}
-                  title="Emerald Moss (Deep high-contrast topography)"
-                >
-                  <span className="w-3 h-3 rounded-full bg-teal-400 border border-teal-200 shrink-0" />
-                  <span className="truncate">Emerald</span>
-                </button>
-
-                {/* Bronze / Sepia Earth Button */}
-                <button
-                  type="button"
-                  onClick={() => setLidarPalette('sepia')}
-                  className={`px-1.5 py-1.5 rounded-xl border flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
-                    lidarPalette === 'sepia'
-                      ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md shadow-amber-950/60'
-                      : 'bg-stone-850 border-stone-750 text-stone-400 hover:text-stone-200'
-                  }`}
-                  title="Archaeological Bronze / Sepia Earth Tone"
-                >
-                  <span className="w-3 h-3 rounded-full bg-amber-600 border border-amber-400 shrink-0" />
-                  <span className="truncate">Bronze</span>
-                </button>
-
-                {/* Slate Relief Button */}
-                <button
-                  type="button"
-                  onClick={() => setLidarPalette('slate')}
-                  className={`px-1.5 py-1.5 rounded-xl border flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
-                    lidarPalette === 'slate'
-                      ? 'bg-slate-600/30 border-slate-400 text-slate-200 font-bold shadow-md shadow-slate-950/60'
-                      : 'bg-stone-850 border-stone-750 text-stone-400 hover:text-stone-200'
-                  }`}
-                  title="Dark Slate / Charcoal Relief (Anti-glare night)"
-                >
-                  <span className="w-3 h-3 rounded-full bg-slate-500 border border-slate-300 shrink-0" />
-                  <span className="truncate">Slate</span>
-                </button>
-
-                {/* Original Grayscale Button */}
-                <button
-                  type="button"
-                  onClick={() => setLidarPalette('original')}
-                  className={`px-1.5 py-1.5 rounded-xl border flex flex-col items-center justify-center space-y-1 transition cursor-pointer ${
-                    lidarPalette === 'original'
-                      ? 'bg-stone-600/30 border-stone-300 text-stone-100 font-bold shadow-md'
-                      : 'bg-stone-850 border-stone-750 text-stone-400 hover:text-stone-200'
-                  }`}
-                  title="Classic Monochrome Grayscale"
-                >
-                  <span className="w-3 h-3 rounded-full bg-stone-300 border border-stone-100 shrink-0" />
-                  <span className="truncate">Classic</span>
+                  {isLidarDrawerOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
-            {/* Relief Contrast Slider */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-stone-400">
-                <span>Relief Contrast:</span>
-                <span className="font-mono text-emerald-300 font-semibold">{lidarContrast}%</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] text-stone-500 font-mono">60%</span>
-                <input
-                  type="range"
-                  min="60"
-                  max="250"
-                  step="5"
-                  value={lidarContrast}
-                  onChange={(e) => setLidarContrast(Number(e.target.value))}
-                  className="w-full h-1.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400"
-                  aria-label="LiDAR Contrast Slider"
-                />
-                <span className="text-[10px] text-stone-500 font-mono">250%</span>
-              </div>
-            </div>
+            {isLidarDrawerOpen && (
+              <div className="p-3 pt-0 space-y-3">
+                {/* Tab Navigation: Sun Angle | Dark & Gold Colors | SLRM Relief | Data Sources */}
+                <div className="flex items-center justify-between bg-stone-900 p-1 rounded-xl border border-stone-800 text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveLidarTab('sun')}
+                    className={`flex-1 py-1 rounded-lg transition cursor-pointer text-center ${
+                      activeLidarTab === 'sun'
+                        ? 'bg-amber-500 text-stone-950 font-extrabold shadow'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    Sun Angle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveLidarTab('colors')}
+                    className={`flex-1 py-1 rounded-lg transition cursor-pointer text-center ${
+                      activeLidarTab === 'colors'
+                        ? 'bg-amber-500 text-stone-950 font-extrabold shadow'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    Dark &amp; Gold
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveLidarTab('slrm')}
+                    className={`flex-1 py-1 rounded-lg transition cursor-pointer text-center ${
+                      activeLidarTab === 'slrm'
+                        ? 'bg-amber-500 text-stone-950 font-extrabold shadow'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    SLRM Micro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveLidarTab('sources')}
+                    className={`flex-1 py-1 rounded-lg transition cursor-pointer text-center ${
+                      activeLidarTab === 'sources'
+                        ? 'bg-amber-500 text-stone-950 font-extrabold shadow'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    Sources
+                  </button>
+                </div>
 
-            {/* Quick Contrast presets */}
-            <div className="flex items-center justify-between pt-1 border-t border-stone-800 text-[10px]">
-              <span className="text-stone-400 font-medium">Quick Depth:</span>
-              <div className="flex items-center space-x-1">
-                <button
-                  type="button"
-                  onClick={() => setLidarContrast(100)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
-                    lidarContrast === 100
-                      ? 'bg-emerald-500 text-stone-950 font-bold'
-                      : 'bg-stone-800 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  100% Flat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLidarContrast(140)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
-                    lidarContrast === 140
-                      ? 'bg-emerald-500 text-stone-950 font-bold'
-                      : 'bg-stone-800 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  140% Enhanced
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLidarContrast(200)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] transition cursor-pointer ${
-                    lidarContrast === 200
-                      ? 'bg-emerald-500 text-stone-950 font-bold'
-                      : 'bg-stone-800 text-stone-300 hover:text-white'
-                  }`}
-                >
-                  200% Deep
-                </button>
-              </div>
-            </div>
+                {/* TAB 1: SUN POSITION & ILLUMINATION ANGLE (TerraDetect Dynamic Relief) */}
+                {activeLidarTab === 'sun' && (
+                  <div className="space-y-2.5 animate-in fade-in duration-150">
+                    {/* Sun Direction (Azimuth 0° to 360°) */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] text-stone-300">
+                        <span className="font-semibold flex items-center space-x-1">
+                          <Compass className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Sun Direction (Azimuth):</span>
+                        </span>
+                        <span className="font-mono text-amber-300 font-bold">
+                          {sunAzimuth}° ({getCompassHeadingName(sunAzimuth)})
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="360"
+                        step="5"
+                        value={sunAzimuth}
+                        onChange={(e) => setSunAzimuth(Number(e.target.value))}
+                        className="w-full h-1.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-400 hover:accent-amber-300"
+                        aria-label="Sun Azimuth Direction Slider"
+                      />
+                      {/* 8 Cardinal Direction Quick Presets */}
+                      <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+                        {[
+                          { label: 'NW 315°', deg: 315 },
+                          { label: 'N 0°', deg: 0 },
+                          { label: 'NE 45°', deg: 45 },
+                          { label: 'E 90°', deg: 90 },
+                          { label: 'SE 135°', deg: 135 },
+                          { label: 'S 180°', deg: 180 },
+                          { label: 'SW 225°', deg: 225 },
+                          { label: 'W 270°', deg: 270 }
+                        ].map((btn) => (
+                          <button
+                            key={btn.label}
+                            type="button"
+                            onClick={() => setSunAzimuth(btn.deg)}
+                            className={`py-0.5 rounded border transition cursor-pointer text-center ${
+                              sunAzimuth === btn.deg
+                                ? 'bg-amber-500/30 border-amber-400 text-amber-200 font-bold'
+                                : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                            }`}
+                          >
+                            {btn.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-            <p className="text-[10px] text-stone-400 leading-tight">
-              Pasture green base eliminates white glare, revealing subtle ridge &amp; furrow, barrows &amp; sunken ditches.
-            </p>
+                    {/* Sun Height (Altitude 5° to 85°) */}
+                    <div className="space-y-1 pt-1 border-t border-stone-850">
+                      <div className="flex items-center justify-between text-[11px] text-stone-300">
+                        <span className="font-semibold flex items-center space-x-1">
+                          <SunMedium className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Sun Height (Altitude):</span>
+                        </span>
+                        <span className="font-mono text-amber-300 font-bold">{sunAltitude}°</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="85"
+                        step="2"
+                        value={sunAltitude}
+                        onChange={(e) => setSunAltitude(Number(e.target.value))}
+                        className="w-full h-1.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-400 hover:accent-amber-300"
+                        aria-label="Sun Altitude Height Slider"
+                      />
+                      {/* Quick Sun Altitude Presets */}
+                      <div className="flex items-center space-x-1 text-[9px]">
+                        <button
+                          type="button"
+                          onClick={() => setSunAltitude(15)}
+                          className={`flex-1 py-1 rounded border text-center transition cursor-pointer ${
+                            sunAltitude === 15
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-300 hover:text-white'
+                          }`}
+                          title="Low grazing winter sun casts long dramatic shadows exposing 5cm plowing furrows"
+                        >
+                          Grazing Low (15°)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSunAltitude(35)}
+                          className={`flex-1 py-1 rounded border text-center transition cursor-pointer ${
+                            sunAltitude === 35
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-300 hover:text-white'
+                          }`}
+                          title="Standard archaeological hillshade angle"
+                        >
+                          Standard (35°)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSunAltitude(60)}
+                          className={`flex-1 py-1 rounded border text-center transition cursor-pointer ${
+                            sunAltitude === 60
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-300 hover:text-white'
+                          }`}
+                          title="High overhead sun pierces deep holloways and pits"
+                        >
+                          Overhead (60°)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: DARK & GOLD COLOURS & TONES */}
+                {activeLidarTab === 'colors' && (
+                  <div className="space-y-2.5 animate-in fade-in duration-150">
+                    {/* Palette Selector */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-stone-300">
+                        <span>Terrain Tones:</span>
+                        <span className="text-[10px] text-amber-300 font-mono capitalize">
+                          {lidarPalette === 'darkGold' && 'Dark & Gold (Obsidian)'}
+                          {lidarPalette === 'goldSunburst' && 'Sunburst Gold'}
+                          {lidarPalette === 'slrmAmber' && 'SLRM Amber & Midnight'}
+                          {lidarPalette === 'bronze' && 'Archaeological Bronze'}
+                          {lidarPalette === 'emerald' && 'Pasture Green'}
+                          {lidarPalette === 'thermal' && 'Thermal Radar'}
+                          {lidarPalette === 'slate' && 'Dark Slate'}
+                          {lidarPalette === 'original' && 'Classic B&W'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1 text-[9px]">
+                        {/* 1. Dark & Gold (Obsidian & Antique Gold) */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('darkGold')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'darkGold'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md shadow-amber-950/70'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Dark Obsidian depressions with gleaming Antique Gold ridges & barrow mounds"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-stone-950 via-amber-700 to-amber-400 border border-amber-300" />
+                          <span className="truncate font-bold text-amber-300">Dark &amp; Gold</span>
+                        </button>
+
+                        {/* 2. Sunburst Gold */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('goldSunburst')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'goldSunburst'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Vivid Sunburst Gold ridges and deep peat shadows"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-stone-900 via-amber-600 to-yellow-300 border border-yellow-200" />
+                          <span className="truncate">Sunburst</span>
+                        </button>
+
+                        {/* 3. SLRM Amber */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('slrmAmber')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'slrmAmber'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Archaeological SLRM Dual-Tone: Midnight depressions, amber banks"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-blue-950 via-amber-800 to-amber-300 border border-amber-200" />
+                          <span className="truncate">SLRM Amber</span>
+                        </button>
+
+                        {/* 4. Bronze */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('bronze')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'bronze'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Archaeological Bronze & Verdigris Earth"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-stone-900 to-amber-700 border border-amber-600" />
+                          <span className="truncate">Bronze</span>
+                        </button>
+
+                        {/* 5. Pasture Green */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('emerald')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'emerald'
+                              ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Pasture Green & Lime Ridge: British meadow anti-glare"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-stone-900 to-emerald-500 border border-emerald-300" />
+                          <span className="truncate">Pasture</span>
+                        </button>
+
+                        {/* 6. Thermal */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('thermal')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'thermal'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Thermal Radar: Molten gold & charcoal"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-purple-950 to-amber-400 border border-amber-300" />
+                          <span className="truncate">Thermal</span>
+                        </button>
+
+                        {/* 7. Slate */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('slate')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'slate'
+                              ? 'bg-slate-600/30 border-slate-400 text-slate-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Dark Slate & Silver Graphite"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-stone-950 to-slate-400 border border-slate-300" />
+                          <span className="truncate">Slate</span>
+                        </button>
+
+                        {/* 8. Classic B&W */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarPalette('original')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center space-y-0.5 transition cursor-pointer text-center ${
+                            lidarPalette === 'original'
+                              ? 'bg-stone-600/30 border-stone-400 text-stone-200 font-bold shadow-md'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Calibrated Monochrome Grayscale"
+                        >
+                          <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-stone-900 to-stone-200 border border-stone-100" />
+                          <span className="truncate">B&amp;W</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Ground Exposure & Contrast Sliders */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-stone-850">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-stone-300">
+                          <span>Exposure:</span>
+                          <span className="font-mono text-amber-300 font-bold">{lidarBrightness}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="20"
+                          max="85"
+                          step="2"
+                          value={lidarBrightness}
+                          onChange={(e) => setLidarBrightness(Number(e.target.value))}
+                          className="w-full h-1 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-stone-300">
+                          <span>Contrast:</span>
+                          <span className="font-mono text-amber-300 font-bold">{lidarContrast}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="100"
+                          max="280"
+                          step="5"
+                          value={lidarContrast}
+                          onChange={(e) => setLidarContrast(Number(e.target.value))}
+                          className="w-full h-1 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Invert Shadows Toggle */}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-stone-400">Reverse Lighting Angles:</span>
+                      <button
+                        type="button"
+                        onClick={() => setInvertRelief(!invertRelief)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition cursor-pointer ${
+                          invertRelief
+                            ? 'bg-amber-500/30 border-amber-400 text-amber-200'
+                            : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                        }`}
+                      >
+                        {invertRelief ? 'Inverted Shadows ON' : 'Invert Shadows'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: SLRM (SIMPLE LOCAL RELIEF MODEL) MICRO-RELIEF */}
+                {activeLidarTab === 'slrm' && (
+                  <div className="space-y-2.5 animate-in fade-in duration-150">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] text-stone-300">
+                        <span className="font-semibold flex items-center space-x-1">
+                          <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                          <span>SLRM Opacity (Micro-Relief):</span>
+                        </span>
+                        <span className="font-mono text-amber-300 font-bold">{Math.round(slrmOpacity * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1.0"
+                        step="0.05"
+                        value={slrmOpacity}
+                        onChange={(e) => setSlrmOpacity(Number(e.target.value))}
+                        className="w-full h-1.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-400 hover:accent-amber-300"
+                        aria-label="SLRM Opacity Slider"
+                      />
+                      <div className="flex items-center justify-between text-[9px] text-stone-500">
+                        <span>Standard Hillshade (0%)</span>
+                        <span>Pure SLRM Micro (100%)</span>
+                      </div>
+                    </div>
+
+                    {/* Macro-Trend Radius Presets */}
+                    <div className="space-y-1 pt-1 border-t border-stone-850">
+                      <div className="flex items-center justify-between text-[10px] text-stone-300">
+                        <span>SLRM Feature Scope:</span>
+                        <span className="font-mono text-amber-300">
+                          {slrmRadius === 2 && 'Subtle (2px - furrows)'}
+                          {slrmRadius === 4 && 'Standard (4px - barrows)'}
+                          {slrmRadius === 8 && 'Deep (8px - ramparts)'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 text-[9px]">
+                        <button
+                          type="button"
+                          onClick={() => setSlrmRadius(2)}
+                          className={`py-1 rounded border text-center transition cursor-pointer ${
+                            slrmRadius === 2
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                        >
+                          Subtle (2px)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSlrmRadius(4)}
+                          className={`py-1 rounded border text-center transition cursor-pointer ${
+                            slrmRadius === 4
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                        >
+                          Standard (4px)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSlrmRadius(8)}
+                          className={`py-1 rounded border text-center transition cursor-pointer ${
+                            slrmRadius === 8
+                              ? 'bg-amber-500 text-stone-950 font-bold'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                        >
+                          Deep (8px)
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-stone-400 leading-relaxed bg-stone-900/60 p-2 rounded-xl border border-stone-800">
+                      <strong>Simple Local Relief Model (SLRM):</strong> Strips away broader regional hillside slopes to isolate human-made micro-earthworks (Celtic lynchets, ridge-and-furrow, barrows) regardless of terrain gradient.
+                    </p>
+                  </div>
+                )}
+
+                {/* TAB 4: DATA SOURCES & SATELLITE BLENDING */}
+                {activeLidarTab === 'sources' && (
+                  <div className="space-y-2.5 animate-in fade-in duration-150">
+                    {/* Sources Selector */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-stone-300">
+                        <span>Terrain Laser Provider:</span>
+                        <span className="text-[10px] text-amber-300 font-mono truncate max-w-[150px]">
+                          {lidarSource === 'wales2m' && 'DataMapWales 2m DTM (100% Wales)'}
+                          {lidarSource === 'wales1m' && 'DataMapWales 1m DTM (High-Res)'}
+                          {lidarSource === 'walesDsm2m' && 'DataMapWales 2m DSM (Walls/Dykes)'}
+                          {lidarSource === 'allWales' && 'All-UK Auto (Wales 2m + EA 1m)'}
+                          {lidarSource === 'ea1m' && 'EA 1m DTM (England Bare-Earth)'}
+                          {lidarSource === 'ea2m' && 'EA 2m DTM (England Wide)'}
+                          {lidarSource === 'eadsm' && 'EA 1m DSM (Banks & Walls)'}
+                          {lidarSource === 'eacolor' && 'EA 1m Color Elevation'}
+                          {lidarSource === 'composite' && 'UK Multi-Angle Relief'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 text-[9px]">
+                        {/* Wales 2m National DTM */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('wales2m')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'wales2m'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="DataMapWales 2m DTM: Complete 100% nationwide laser bare-earth terrain for all of Wales"
+                        >
+                          <Globe className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">Wales 2m DTM</span>
+                          <span className="text-[8px] text-amber-300 font-semibold">100% Wales</span>
+                        </button>
+
+                        {/* Wales 1m High-Res DTM */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('wales1m')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'wales1m'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="DataMapWales 1m DTM: High-resolution laser bare-earth with auto 2m fallback"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">Wales 1m DTM</span>
+                          <span className="text-[8px] text-stone-400">High-Res</span>
+                        </button>
+
+                        {/* Wales 2m DSM Surface (Walls & Dykes) */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('walesDsm2m')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'walesDsm2m'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="DataMapWales 2m DSM: Surface model highlighting ancient field walls, earth dykes and tree canopies"
+                        >
+                          <Scan className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">Wales 2m DSM</span>
+                          <span className="text-[8px] text-stone-400">Walls &amp; Dykes</span>
+                        </button>
+
+                        {/* All-UK Seamless Auto Composite */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('allWales')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'allWales'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="All-UK Auto: DataMapWales 2m DTM in Wales seamlessly combined with EA 1m DTM in England"
+                        >
+                          <Globe className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">All-UK Auto</span>
+                          <span className="text-[8px] text-stone-400">Wales + England</span>
+                        </button>
+
+                        {/* EA 1m DTM (England) */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('ea1m')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'ea1m'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Environment Agency 1m National DTM (England Bare-earth micro relief)"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">EA 1m DTM</span>
+                          <span className="text-[8px] text-stone-500">England</span>
+                        </button>
+
+                        {/* EA 2m DTM */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('ea2m')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'ea2m'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Environment Agency 2m DTM Composite (Wide rural England)"
+                        >
+                          <Mountain className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">EA 2m DTM</span>
+                          <span className="text-[8px] text-stone-500">England Rural</span>
+                        </button>
+
+                        {/* EA 1m DSM */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('eadsm')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'eadsm'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Environment Agency 1m DSM Surface Model (Ancient walls & boundary dykes in England)"
+                        >
+                          <Scan className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">EA 1m DSM</span>
+                          <span className="text-[8px] text-stone-500">England Walls</span>
+                        </button>
+
+                        {/* EA 1m Elevation Color */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLidarSource('eacolor');
+                            setLidarPalette('original');
+                          }}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'eacolor'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="Environment Agency 1m Hypsometric Color Elevation"
+                        >
+                          <div className="w-3.5 h-3.5 rounded-full bg-gradient-to-r from-blue-500 via-emerald-400 to-amber-500 mb-0.5 border border-white/40" />
+                          <span className="font-bold leading-none">Elevation</span>
+                          <span className="text-[8px] text-stone-500">Color Ramp</span>
+                        </button>
+
+                        {/* UK Multi-Angle Composite */}
+                        <button
+                          type="button"
+                          onClick={() => setLidarSource('composite')}
+                          className={`p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition cursor-pointer ${
+                            lidarSource === 'composite'
+                              ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow-md ring-1 ring-amber-400/40'
+                              : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                          }`}
+                          title="UK Nationwide Multi-Directional High-Relief (England, Wales, Scotland)"
+                        >
+                          <Mountain className="w-3.5 h-3.5 text-amber-400 mb-0.5" />
+                          <span className="font-bold leading-none">UK Multi</span>
+                          <span className="text-[8px] text-stone-500">All Britain</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Satellite Blend Opacity Slider */}
+                    <div className="space-y-1 pt-1 border-t border-stone-850">
+                      <div className="flex items-center justify-between text-[11px] text-stone-300">
+                        <span className="flex items-center space-x-1">
+                          <Layers className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Satellite Aerial Blend:</span>
+                        </span>
+                        <span className="font-mono text-amber-300 font-bold">{Math.round(lidarOpacity * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.20"
+                        max="1.00"
+                        step="0.05"
+                        value={lidarOpacity}
+                        onChange={(e) => setLidarOpacity(Number(e.target.value))}
+                        className="w-full h-1.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-400 hover:accent-amber-300"
+                        aria-label="Satellite Overlay Blend Slider"
+                      />
+                      <div className="flex items-center justify-between text-[9px] text-stone-500">
+                        <span>Satellite visible</span>
+                        <span>100% Pure Bare-Earth</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

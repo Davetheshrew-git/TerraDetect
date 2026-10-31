@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera,
   Upload,
-  Sparkles,
   MapPin,
   Save,
   Loader2,
@@ -17,21 +16,19 @@ import {
   WifiOff,
   Cloud
 } from 'lucide-react';
-import { MetalFind, AiValuation, COMMON_METALS, POPULAR_TAGS } from '../types';
+import { MetalFind, COMMON_METALS, POPULAR_TAGS } from '../types';
 import { SAMPLE_SPECIMENS, SampleSpecimen } from '../data/sampleFinds';
-import { ValuationBreakdownCard } from './ValuationBreakdownCard';
-import { uploadFindImage } from '../lib/firebase';
 import { ProximityCheckResult } from '../lib/geoUtils';
-import { saveFindToOfflineQueue } from '../lib/offlineDb';
+import { saveLocalFind } from '../lib/offlineDb';
 
 interface FindFormProps {
   currentPin: { lat: number; lng: number; accuracy?: number } | null;
   onUpdatePin: (lat: number, lng: number) => void;
   proximityResult: ProximityCheckResult | null;
   onSaveFind: (findData: Omit<MetalFind, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
-  userId: string;
+  userId?: string;
   userDisplayName?: string;
-  isOnline: boolean;
+  isOnline?: boolean;
   onOfflineQueued?: () => void;
   prefillData?: {
     title?: string;
@@ -41,7 +38,6 @@ interface FindFormProps {
     notes?: string;
     customTags?: string[];
     imageBase64?: string;
-    aiValuation?: AiValuation;
   } | null;
   onSaved?: () => void;
 }
@@ -70,17 +66,15 @@ export const FindForm: React.FC<FindFormProps> = ({
   const [isPublic, setIsPublic] = useState(true);
   const [imageBase64, setImageBase64] = useState<string>('');
 
-  // AI & Submission states
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [aiValuation, setAiValuation] = useState<AiValuation | null>(null);
+  // Submission states
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [savedOfflineNotice, setSavedOfflineNotice] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Set prefill data if supplied from AI scanner
+  // Set prefill data if supplied
   useEffect(() => {
     if (prefillData) {
       if (prefillData.title) setTitle(prefillData.title);
@@ -90,7 +84,6 @@ export const FindForm: React.FC<FindFormProps> = ({
       if (prefillData.notes) setNotes(prefillData.notes);
       if (prefillData.customTags) setCustomTags(prefillData.customTags);
       if (prefillData.imageBase64) setImageBase64(prefillData.imageBase64);
-      if (prefillData.aiValuation) setAiValuation(prefillData.aiValuation);
     }
   }, [prefillData]);
 
@@ -109,8 +102,6 @@ export const FindForm: React.FC<FindFormProps> = ({
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         setImageBase64(reader.result);
-        setAiValuation(null);
-        setAnalysisError(null);
       }
     };
     reader.readAsDataURL(file);
@@ -124,8 +115,6 @@ export const FindForm: React.FC<FindFormProps> = ({
     setCustomTags(specimen.tags);
     setNotes(specimen.notes);
     setImageBase64(specimen.imageUrl);
-    setAiValuation(null);
-    setAnalysisError(null);
   };
 
   const handleAddTag = (tagToAdd: string) => {
@@ -140,81 +129,11 @@ export const FindForm: React.FC<FindFormProps> = ({
     setCustomTags(customTags.filter(t => t !== tagToRemove));
   };
 
-  const handleAnalyzePhoto = async () => {
-    if (!imageBase64) {
-      setAnalysisError('Please upload or select a coin / artifact photo first.');
-      return;
-    }
-
-    if (!isOnline) {
-      setAnalysisError('AI Valuation requires an active internet connection. Connect to network or save find offline.');
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setAnalysisError(null);
-
-    try {
-      const response = await fetch('/api/identify-find', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64,
-          detectorContext: {
-            targetVdi,
-            depth,
-            metalType,
-            notes
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errorJson = await response.json();
-        throw new Error(errorJson.error || 'Failed to analyze photograph.');
-      }
-
-      const result: AiValuation = await response.json();
-      setAiValuation(result);
-
-      // Auto update title if generic or empty
-      if (!title || title.includes('Sample') || title.length < 5) {
-        setTitle(result.coinType);
-      }
-
-      // Add suggested tags
-      const newSuggestedTags = [...customTags];
-      if (result.period && !newSuggestedTags.includes(result.period)) {
-        newSuggestedTags.push(result.period);
-      }
-      if (result.isPotentialTreasure && !newSuggestedTags.includes('Treasure Act')) {
-        newSuggestedTags.push('Treasure Act');
-      }
-      setCustomTags(newSuggestedTags);
-    } catch (err: any) {
-      console.error('AI Valuation error:', err);
-      setAnalysisError(err.message || 'Error communicating with AI valuation service.');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const handleApplyAiToForm = () => {
-    if (!aiValuation) return;
-    setTitle(aiValuation.coinType);
-    if (aiValuation.period) {
-      handleAddTag(aiValuation.period);
-    }
-    const currentNotes = notes ? notes + '\n\n' : '';
-    setNotes(
-      `${currentNotes}[AI Numismatic Valuation]: ${aiValuation.summary}\nGrade: ${aiValuation.conditionGrade} | Valuation: £${aiValuation.estimatedValueMin} - £${aiValuation.estimatedValueMax} GBP`
-    );
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!title.trim()) {
-      alert('Please enter a title for this find.');
+      setFormError('Please enter a title for this find.');
       return;
     }
 
@@ -224,8 +143,8 @@ export const FindForm: React.FC<FindFormProps> = ({
     setIsSaving(true);
     try {
       const findPayload: Omit<MetalFind, 'id' | 'createdAt' | 'updatedAt'> = {
-        userId,
-        userDisplayName: userDisplayName || 'Detectorist',
+        userId: 'device-owner',
+        userDisplayName: userDisplayName || 'Detectorist (Device Vault)',
         title: title.trim(),
         depth,
         targetVdi,
@@ -237,7 +156,6 @@ export const FindForm: React.FC<FindFormProps> = ({
         accuracy: currentPin?.accuracy || 5,
         generalLocation: generalLocation.trim() || 'United Kingdom',
         imageUrl: imageBase64,
-        aiAnalysis: aiValuation || undefined,
         isPublic,
         likesCount: 0,
         nearScheduledMonument: proximityResult?.isWithinWarningDistance || false,
@@ -245,56 +163,13 @@ export const FindForm: React.FC<FindFormProps> = ({
         nearestMonumentDistance: proximityResult?.distanceMeters || undefined
       };
 
-      // Check online status: if offline, save directly to IndexedDB offline queue!
-      if (!navigator.onLine || !isOnline) {
-        await saveFindToOfflineQueue(findPayload);
-        setSavedOfflineNotice(true);
-        if (onOfflineQueued) onOfflineQueued();
-        setTimeout(() => setSavedOfflineNotice(false), 5000);
-      } else {
-        // Online: upload image to Firebase Storage and save to Firestore
-        let finalImageUrl = imageBase64;
-        if (imageBase64 && imageBase64.startsWith('data:')) {
-          finalImageUrl = await uploadFindImage(imageBase64, userId);
-        }
-
-        await onSaveFind({
-          ...findPayload,
-          imageUrl: finalImageUrl
-        });
-
-        setSaveSuccess(true);
-        if (onSaved) setTimeout(onSaved, 1200);
-        setTimeout(() => setSaveSuccess(false), 4000);
-      }
-    } catch (err) {
-      console.error('Error saving find, falling back to local offline storage:', err);
-      // Fallback to IndexedDB queue if network drops mid-request
-      try {
-        await saveFindToOfflineQueue({
-          userId,
-          userDisplayName: userDisplayName || 'Detectorist',
-          title: title.trim(),
-          depth,
-          targetVdi,
-          metalType,
-          customTags,
-          notes: notes.trim(),
-          latitude: lat,
-          longitude: lng,
-          accuracy: currentPin?.accuracy || 5,
-          generalLocation: generalLocation.trim() || 'United Kingdom',
-          imageUrl: imageBase64,
-          aiAnalysis: aiValuation || undefined,
-          isPublic,
-          likesCount: 0
-        });
-        setSavedOfflineNotice(true);
-        if (onOfflineQueued) onOfflineQueued();
-        setTimeout(() => setSavedOfflineNotice(false), 5000);
-      } catch (offlineErr) {
-        alert('Could not save find. Please check device storage permissions.');
-      }
+      await onSaveFind(findPayload);
+      setSaveSuccess(true);
+      if (onSaved) setTimeout(onSaved, 900);
+      setTimeout(() => setSaveSuccess(false), 3500);
+    } catch (err: any) {
+      console.error('Error saving find to local vault:', err);
+      setFormError('Could not save find. Please check device storage permissions.');
     } finally {
       setIsSaving(false);
     }
@@ -302,13 +177,11 @@ export const FindForm: React.FC<FindFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 text-stone-100 pb-12">
-      {/* Offline Status Warning in Field */}
-      {!isOnline && (
-        <div className="bg-amber-950/80 border border-amber-500/60 rounded-xl p-3 text-amber-200 text-xs flex items-center space-x-2">
-          <WifiOff className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>
-            <strong>Offline Field Mode Active:</strong> No mobile signal detected. Finds will be stored safely in your device's IndexedDB and synced to Firestore when back online!
-          </span>
+      {/* Form Error Banner */}
+      {formError && (
+        <div className="bg-rose-500/20 border border-rose-500/50 rounded-xl p-3.5 text-rose-300 text-xs font-semibold flex items-center space-x-2 animate-in fade-in">
+          <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+          <span>{formError}</span>
         </div>
       )}
 
@@ -316,15 +189,7 @@ export const FindForm: React.FC<FindFormProps> = ({
       {saveSuccess && (
         <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-xl p-3.5 text-emerald-300 text-xs font-semibold flex items-center space-x-2 animate-in fade-in">
           <Check className="w-5 h-5 text-emerald-400" />
-          <span>Find successfully logged and saved to persistent Firestore database!</span>
-        </div>
-      )}
-
-      {/* Offline Stored Banner */}
-      {savedOfflineNotice && (
-        <div className="bg-amber-500/20 border border-amber-500/50 rounded-xl p-3.5 text-amber-300 text-xs font-semibold flex items-center space-x-2 animate-in fade-in">
-          <Cloud className="w-5 h-5 text-amber-400" />
-          <span>Find saved safely to device offline vault! It will sync automatically when online.</span>
+          <span>Find saved safely to your device's private local vault!</span>
         </div>
       )}
 
@@ -351,12 +216,12 @@ export const FindForm: React.FC<FindFormProps> = ({
         </div>
       )}
 
-      {/* 1. Photo Upload & AI Identification Section */}
+      {/* 1. Photo Upload & Visual Record Section */}
       <div className="bg-stone-900 border border-stone-800 rounded-2xl p-4 sm:p-5 space-y-4">
         <div className="flex items-center justify-between">
           <label className="text-sm font-bold text-stone-200 flex items-center space-x-2">
             <Camera className="w-4 h-4 text-amber-400" />
-            <span>Find Photograph &amp; AI Analysis</span>
+            <span>Find Photograph &amp; Visual Record</span>
           </label>
           <span className="text-[11px] text-stone-400">Coins, Tokens, Brooches, Axes</span>
         </div>
@@ -397,68 +262,33 @@ export const FindForm: React.FC<FindFormProps> = ({
             />
           </div>
 
-          {/* Quick preset selector & AI button */}
-          <div className="sm:col-span-2 flex flex-col justify-between space-y-3">
-            <div>
-              <span className="text-xs font-mono uppercase text-stone-400 font-semibold block mb-2">
-                Quick Specimen Presets:
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {SAMPLE_SPECIMENS.map(sample => (
-                  <button
-                    key={sample.id}
-                    type="button"
-                    onClick={() => applySample(sample)}
-                    className="text-left bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-amber-500/60 p-2 rounded-xl transition group"
-                  >
-                    <p className="font-semibold text-stone-200 group-hover:text-amber-400 line-clamp-1">
-                      {sample.title}
-                    </p>
-                    <p className="text-[10px] text-stone-400 font-mono mt-0.5">
-                      VDI: {sample.suggestedVdi} • {sample.metalType}
-                    </p>
-                  </button>
-                ))}
-              </div>
+          {/* Quick preset selector */}
+          <div className="sm:col-span-2 flex flex-col justify-center space-y-2">
+            <span className="text-xs font-mono uppercase text-stone-400 font-semibold block">
+              Quick Specimen Presets:
+            </span>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {SAMPLE_SPECIMENS.map(sample => (
+                <button
+                  key={sample.id}
+                  type="button"
+                  onClick={() => applySample(sample)}
+                  className="text-left bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-amber-500/60 p-2.5 rounded-xl transition group cursor-pointer"
+                >
+                  <p className="font-semibold text-stone-200 group-hover:text-amber-400 line-clamp-1">
+                    {sample.title}
+                  </p>
+                  <p className="text-[10px] text-stone-400 font-mono mt-0.5">
+                    VDI: {sample.suggestedVdi} • {sample.metalType}
+                  </p>
+                </button>
+              ))}
             </div>
-
-            {/* AI Identify & Valuation Trigger Button */}
-            <button
-              type="button"
-              onClick={handleAnalyzePhoto}
-              disabled={isAnalyzing || !imageBase64}
-              className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-stone-950 shadow-lg shadow-amber-950/40 hover:brightness-105 active:scale-[0.99] transition flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-stone-950" />
-                  <span>Researching Live Auctions &amp; Numismatic Records...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 text-stone-950 fill-stone-950" />
-                  <span>Identify &amp; Estimate Value with Gemini</span>
-                </>
-              )}
-            </button>
+            <p className="text-[11px] text-stone-500 mt-1">
+              Select a preset to fill sample detector readings, or type your custom find details below.
+            </p>
           </div>
         </div>
-
-        {analysisError && (
-          <div className="bg-rose-500/20 border border-rose-500/40 rounded-xl p-3 text-rose-300 text-xs">
-            {analysisError}
-          </div>
-        )}
-
-        {/* Display Valuation Breakdown Card if analyzed */}
-        {aiValuation && (
-          <div className="pt-2 animate-in fade-in duration-300">
-            <ValuationBreakdownCard
-              valuation={aiValuation}
-              onApplyToForm={handleApplyAiToForm}
-            />
-          </div>
-        )}
       </div>
 
       {/* 2. Find Details Form Fields */}
@@ -671,7 +501,7 @@ export const FindForm: React.FC<FindFormProps> = ({
         ) : (
           <>
             <Save className="w-5 h-5" />
-            <span>{isOnline ? 'Save Find to Firestore' : 'Save Find Offline (Sync Later)'}</span>
+            <span>Save Find to Device Vault</span>
           </>
         )}
       </button>

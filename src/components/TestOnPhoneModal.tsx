@@ -2,18 +2,10 @@ import React, { useState } from 'react';
 import {
   X,
   Smartphone,
-  QrCode,
   Copy,
   Check,
-  ExternalLink,
   Download,
-  Compass,
-  Scan,
-  Camera,
-  WifiOff,
-  AlertCircle,
-  Share2,
-  Info
+  Share2
 } from 'lucide-react';
 
 interface TestOnPhoneModalProps {
@@ -51,8 +43,8 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
         setCopied(true);
         setTimeout(() => setCopied(false), 2500);
       }
-    } catch (err) {
-      console.warn('Failed to copy link:', err);
+    } catch {
+      // Ignore clipboard permission errors
     }
   };
 
@@ -67,14 +59,15 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
             </div>
             <div>
               <h3 className="font-extrabold text-base sm:text-lg text-stone-100">
-                Test TerraDetect on Your Phone
+                Launch TerraDetect UK on Mobile
               </h3>
               <p className="text-xs text-stone-400">
-                Live mobile links &amp; installation guide
+                QR code launcher &amp; home-screen field installation
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 hover:bg-stone-800 rounded-xl text-stone-400 hover:text-stone-200 transition cursor-pointer"
             aria-label="Close modal"
@@ -85,22 +78,6 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
 
         {/* Content */}
         <div className="p-5 sm:p-6 space-y-4 text-xs sm:text-sm text-stone-300 max-h-[75vh] overflow-y-auto">
-          {/* Important notice explaining the "Page not found" error */}
-          <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-3.5 space-y-2">
-            <div className="flex items-center space-x-2 text-amber-300 font-bold text-xs">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-              <span>Why you saw "Page not found":</span>
-            </div>
-            <p className="text-xs text-stone-300 leading-relaxed">
-              In Google AI Studio, the public <strong>preview link</strong> is only deployed when you click the{' '}
-              <strong className="text-amber-300">"Share"</strong> button in the top-right toolbar.
-            </p>
-            <div className="flex items-center space-x-2 pt-1 text-[11px] text-amber-200 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-              <span>Use the <strong>Live Dev URL</strong> below, or click <strong>Share</strong> to activate the public link.</span>
-            </div>
-          </div>
-
           {/* Mode Selector Tabs */}
           <div className="flex items-center p-1 bg-stone-950 rounded-2xl border border-stone-800">
             <button
@@ -113,7 +90,7 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
               }`}
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Live Dev URL (Active)</span>
+              <span>Primary App Link</span>
             </button>
             <button
               type="button"
@@ -125,7 +102,7 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
               }`}
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>Public Share Link</span>
+              <span>Published Mirror Link</span>
             </button>
           </div>
 
@@ -134,23 +111,20 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
             <div className="bg-white p-2.5 rounded-2xl shadow-xl border border-stone-700/50">
               <img
                 src={qrCodeUrl}
-                alt="Scan QR code to test on mobile phone"
+                alt="Scan QR code to launch TerraDetect UK on mobile"
                 className="w-40 h-40 sm:w-44 sm:h-44 object-contain rounded-xl"
               />
             </div>
 
             <div className="space-y-1">
               <span className="text-xs font-bold text-stone-200">
-                {urlMode === 'dev' ? 'Live Dev Server QR Code' : 'Public Shared URL QR Code'}
+                Scan with Phone Camera
               </span>
               <p className="text-[11px] text-stone-400 max-w-xs">
-                {urlMode === 'dev'
-                  ? 'Point your phone camera here. Open in Chrome on your phone (make sure you are signed into your Google account).'
-                  : 'Requires clicking "Share" at the top right of Google AI Studio to publish for any phone without signing in.'}
+                Open on your phone in the field for live GPS positioning, Scheduled Monument boundary warnings, and private on-device vault logging.
               </p>
             </div>
 
-            {/* Direct Link & Copy Action */}
             <div className="w-full flex items-center space-x-2 bg-stone-900 border border-stone-800 rounded-xl p-1.5 pl-3">
               <span className="font-mono text-[11px] text-amber-400 truncate flex-1 text-left select-all">
                 {activeUrl}
@@ -179,33 +153,30 @@ export const TestOnPhoneModal: React.FC<TestOnPhoneModalProps> = ({
           <div className="space-y-2.5">
             <h4 className="font-bold text-sm text-stone-100 flex items-center space-x-2">
               <Download className="w-4 h-4 text-amber-400" />
-              <span>How to Install as a Native App on Mobile (PWA)</span>
+              <span>Install as a Standalone Field App (PWA)</span>
             </h4>
 
-            {/* Android */}
             <div className="bg-stone-850/80 border border-stone-750/70 rounded-2xl p-3 space-y-1.5">
               <div className="flex items-center space-x-2 font-bold text-emerald-400 text-xs">
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>Android (Google Chrome)</span>
+                <span>Android (Chrome)</span>
               </div>
               <ol className="list-decimal list-inside text-xs text-stone-300 space-y-1 pl-1">
-                <li>Scan the QR code or paste the link into Chrome on Android.</li>
-                <li>Tap <strong>"Install App"</strong> in the top header, or tap Chrome's three dots (<strong className="font-mono">⋮</strong>).</li>
-                <li>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
-                <li>TerraDetect UK will launch full-screen with offline support, camera logging &amp; live GPS!</li>
+                <li>Scan the QR code and open in Chrome on Android.</li>
+                <li>Tap <strong>"Install App"</strong> in the top bar or open browser menu (<strong className="font-mono">⋮</strong>).</li>
+                <li>Select <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</li>
               </ol>
             </div>
 
-            {/* iPhone / iOS */}
             <div className="bg-stone-850/80 border border-stone-750/70 rounded-2xl p-3 space-y-1.5">
               <div className="flex items-center space-x-2 font-bold text-sky-400 text-xs">
                 <span className="w-2 h-2 rounded-full bg-sky-400" />
                 <span>iPhone / iPad (Safari)</span>
               </div>
               <ol className="list-decimal list-inside text-xs text-stone-300 space-y-1 pl-1">
-                <li>Open the link in <strong>Safari</strong> on your iPhone.</li>
-                <li>Tap the <strong>Share</strong> icon (the square with an arrow pointing up).</li>
-                <li>Scroll down and select <strong>"Add to Home Screen"</strong>.</li>
+                <li>Open the link in <strong>Safari</strong> on iOS.</li>
+                <li>Tap the <strong>Share</strong> icon in the bottom bar.</li>
+                <li>Choose <strong>"Add to Home Screen"</strong>.</li>
               </ol>
             </div>
           </div>

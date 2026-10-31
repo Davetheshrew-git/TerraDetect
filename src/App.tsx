@@ -4,103 +4,55 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  auth,
-  db,
-  testConnection,
-  handleFirestoreError,
-  OperationType
-} from './lib/firebase';
-import {
-  onAuthStateChanged,
-  signOut,
-  type User
-} from 'firebase/auth';
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  addDoc,
-  deleteDoc,
-  doc
-} from 'firebase/firestore';
-import { MetalFind, AiValuation } from './types';
+import { MetalFind } from './types';
 import { ProximityCheckResult } from './lib/geoUtils';
 import {
-  getPendingOfflineFinds,
-  syncOfflineQueueToFirestore,
-  cacheFindsLocally,
-  getLocallyCachedFinds,
-  saveFindToOfflineQueue
+  saveLocalFind,
+  getAllLocalFinds,
+  deleteLocalFind
 } from './lib/offlineDb';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { MapContainer } from './components/MapContainer';
 import { SlideDrawer } from './components/SlideDrawer';
 import { FindForm } from './components/FindForm';
-import { AiScannerDrawer } from './components/AiScannerDrawer';
 import { FindsList } from './components/FindsList';
 import { HeritageDrawer } from './components/HeritageDrawer';
 import { CommunityFeed } from './components/CommunityFeed';
 import { ShareFindModal } from './components/ShareFindModal';
-import { AuthModal } from './components/AuthModal';
+import { LocalVaultModal } from './components/LocalVaultModal';
 import { TreasureActModal } from './components/TreasureActModal';
 import { TestOnPhoneModal } from './components/TestOnPhoneModal';
 import {
   Plus,
-  Sparkles,
   Coins,
   ShieldAlert,
-  ShieldCheck,
   Users,
   Smartphone,
   Download,
   MapPin,
-  Wifi,
   WifiOff,
-  RefreshCw,
-  User as UserIcon,
-  HelpCircle,
-  Compass,
-  AlertTriangle,
-  Layers,
-  BookOpen
+  HardDrive,
+  HelpCircle
 } from 'lucide-react';
 
-type DrawerTab = 'findForm' | 'aiScanner' | 'findsList' | 'heritage' | 'community' | null;
+type DrawerTab = 'findForm' | 'findsList' | 'heritage' | 'community' | null;
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<DrawerTab>(null);
   const [isTreasureModalOpen, setIsTreasureModalOpen] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
   const [shareFindTarget, setShareFindTarget] = useState<MetalFind | null>(null);
-
-  // Prefill data for FindForm transferred from AI Scanner
-  const [formPrefill, setFormPrefill] = useState<{
-    title?: string;
-    metalType?: string;
-    depth?: string;
-    targetVdi?: string;
-    notes?: string;
-    customTags?: string[];
-    imageBase64?: string;
-    aiValuation?: AiValuation;
-  } | null>(null);
 
   // PWA installation for Android
   const { isInstallable, triggerInstall } = usePWAInstall();
 
-  // Online / Offline state & pending queue
+  // Online / Offline connectivity state
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
-  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(0);
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // Map & Pin state: Default to Wiltshire / Stonehenge (51.1789, -1.8262)
+  // Map & Pin state: Defaults to UK heritage center until live GPS resolves
   const [currentPin, setCurrentPin] = useState<{
     lat: number;
     lng: number;
@@ -113,29 +65,25 @@ export default function App() {
 
   // Scheduled Monuments proximity detection
   const [proximityResult, setProximityResult] = useState<ProximityCheckResult | null>(null);
-  const [monumentsInViewCount, setMonumentsInViewCount] = useState(0);
+  const [, setMonumentsInViewCount] = useState(0);
 
-  // Logged finds state from Firestore or IndexedDB cache
+  // Logged finds state from private On-Device Local Vault
   const [finds, setFinds] = useState<MetalFind[]>([]);
 
-  // Refresh pending offline items count
-  const refreshPendingCount = useCallback(async () => {
-    const list = await getPendingOfflineFinds();
-    setPendingOfflineCount(list.length);
+  // 1. Load finds from Local Vault on start
+  const refreshLocalFinds = useCallback(async () => {
+    const list = await getAllLocalFinds();
+    setFinds(list);
   }, []);
 
-  // 1. Online / Offline listeners & auto-sync
   useEffect(() => {
-    refreshPendingCount();
+    refreshLocalFinds();
+  }, [refreshLocalFinds]);
 
-    const handleOnline = async () => {
-      setIsOnline(true);
-      await triggerOfflineSync();
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+  // 2. Online / Offline listeners for aerial & LiDAR map streaming
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -144,86 +92,28 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [refreshPendingCount]);
-
-  // Sync offline queue to Firestore
-  const triggerOfflineSync = async () => {
-    if (!navigator.onLine || isSyncing || !auth.currentUser) return;
-    setIsSyncing(true);
-    try {
-      const res = await syncOfflineQueueToFirestore();
-      if (res.synced > 0) {
-        console.log(`Successfully synced ${res.synced} offline finds to Firestore!`);
-      }
-    } catch (err) {
-      console.warn('Sync attempt completed with notes:', err);
-    } finally {
-      setIsSyncing(false);
-      refreshPendingCount();
-    }
-  };
-
-  // 2. Initialize Auth and test Firestore connectivity
-  useEffect(() => {
-    testConnection().catch(() => {});
-
-    const unsubscribe = onAuthStateChanged(auth, async user => {
-      setCurrentUser(user);
-      setIsAuthReady(true);
-      if (user) {
-        setTimeout(() => {
-          triggerOfflineSync();
-        }, 500);
-      }
-    });
-
-    return () => unsubscribe();
   }, []);
 
-  // 3. Subscribe to user finds in Firestore or read from IndexedDB if offline / unauthenticated
+  // 3. Immediately acquire user's live geolocation on app startup
   useEffect(() => {
-    if (!isAuthReady) return;
-
-    if (!currentUser || !isOnline) {
-      getLocallyCachedFinds().then(cached => {
-        if (cached && cached.length > 0) {
-          setFinds(cached);
-        }
-      });
-      return;
-    }
-
-    const pathForFinds = 'finds';
-    const q = query(
-      collection(db, pathForFinds),
-      where('userId', '==', currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      snapshot => {
-        const loadedFinds: MetalFind[] = [];
-        snapshot.forEach(docSnap => {
-          loadedFinds.push({
-            id: docSnap.id,
-            ...(docSnap.data() as Omit<MetalFind, 'id'>)
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          setCurrentPin({
+            lat: latitude,
+            lng: longitude,
+            accuracy: accuracy || 5
           });
-        });
-
-        loadedFinds.sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-
-        setFinds(loadedFinds);
-        cacheFindsLocally(loadedFinds);
-      },
-      error => {
-        handleFirestoreError(error, OperationType.LIST, pathForFinds);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [isAuthReady, currentUser, isOnline]);
+        },
+        err => {
+          // If user denies or offline, cleanly retains default UK coordinates
+          console.info('Startup GPS status:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+      );
+    }
+  }, []);
 
   // Handle pin update from map clicks or GPS
   const handlePinChange = useCallback(
@@ -238,57 +128,18 @@ export default function App() {
     setProximityResult(result);
   }, []);
 
-  // Save new find to Firestore (or local IndexedDB if unauthenticated or offline)
+  // Save new find directly to Local Vault
   const handleSaveFind = async (
     findData: Omit<MetalFind, 'id' | 'createdAt' | 'updatedAt'>
   ) => {
-    if (!currentUser || !isOnline) {
-      await saveFindToOfflineQueue(findData);
-      await refreshPendingCount();
-      setFinds(prev => [
-        {
-          id: `local_${Date.now()}`,
-          ...findData,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        ...prev
-      ]);
-
-      if (!currentUser) {
-        setIsAuthModalOpen(true);
-      }
-      return;
-    }
-
-    const pathForWrite = 'finds';
-    try {
-      const timestamp = new Date().toISOString();
-      await addDoc(collection(db, pathForWrite), {
-        ...findData,
-        userId: currentUser.uid,
-        userDisplayName: currentUser.displayName || findData.userDisplayName || 'Detectorist',
-        createdAt: timestamp,
-        updatedAt: timestamp
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, pathForWrite);
-    }
+    const saved = await saveLocalFind(findData);
+    setFinds(prev => [saved, ...prev]);
   };
 
-  // Delete find from Firestore or IndexedDB
+  // Delete find directly from Local Vault
   const handleDeleteFind = async (findId: string) => {
-    if (findId.startsWith('local_')) {
-      setFinds(prev => prev.filter(f => f.id !== findId));
-      return;
-    }
-
-    const pathForDelete = `finds/${findId}`;
-    try {
-      await deleteDoc(doc(db, 'finds', findId));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, pathForDelete);
-    }
+    await deleteLocalFind(findId);
+    setFinds(prev => prev.filter(f => f.id !== findId));
   };
 
   // Navigate to map and center on specific find
@@ -297,35 +148,8 @@ export default function App() {
     setActiveDrawer(null);
   };
 
-  // Calculate cumulative estimated hoard value
-  const totalEstimatedValue = finds.reduce((acc, find) => {
-    if (find.aiAnalysis) {
-      const avg =
-        ((find.aiAnalysis.estimatedValueMin || 0) +
-          (find.aiAnalysis.estimatedValueMax || 0)) /
-        2;
-      return acc + avg;
-    }
-    return acc;
-  }, 0);
-
-  // Open Log Find drawer with fresh or prefilled state
+  // Open Log Find drawer
   const handleOpenLogFind = () => {
-    setActiveDrawer('findForm');
-  };
-
-  // Handle transfer from AI Lens to Find Logger
-  const handleTransferFromAi = (prefill: {
-    title: string;
-    metalType: string;
-    depth: string;
-    targetVdi: string;
-    notes: string;
-    customTags: string[];
-    imageBase64: string;
-    aiValuation: AiValuation;
-  }) => {
-    setFormPrefill(prefill);
     setActiveDrawer('findForm');
   };
 
@@ -386,33 +210,32 @@ export default function App() {
                 ? 'bg-stone-900/85 border-stone-750 text-stone-300'
                 : 'bg-amber-950/90 border-amber-600/60 text-amber-300'
             }`}
+            title={isOnline ? 'Online for LiDAR & aerial map tiles' : 'Offline: local finds and tools active'}
           >
             {isOnline ? (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             ) : (
               <WifiOff className="w-3.5 h-3.5 text-amber-400" />
             )}
-            <span className="hidden sm:inline font-semibold">
-              {isOnline ? 'Online' : 'Field Offline'}
+            <span className="hidden md:inline font-semibold">
+              {isOnline ? 'Map Online' : 'Field Offline'}
             </span>
-
-            {/* Offline Pending Items Sync Badge */}
-            {pendingOfflineCount > 0 && (
-              <button
-                type="button"
-                onClick={triggerOfflineSync}
-                disabled={isSyncing || !isOnline}
-                className="ml-1 px-1.5 py-0.5 rounded-md bg-amber-500 text-stone-950 font-bold text-[10px] flex items-center space-x-1 hover:bg-amber-400 disabled:opacity-40 cursor-pointer"
-                title="Sync offline finds to Firestore"
-              >
-                {isSyncing ? (
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                ) : (
-                  <span>Sync {pendingOfflineCount}</span>
-                )}
-              </button>
-            )}
           </div>
+
+          {/* Device Local Vault (100% On-Device Storage & Backup) */}
+          <button
+            type="button"
+            onClick={() => setIsVaultModalOpen(true)}
+            className="flex items-center space-x-1.5 bg-stone-900/90 hover:bg-stone-850 border border-emerald-500/40 text-stone-200 backdrop-blur-xl px-2.5 py-1.5 rounded-2xl text-xs font-semibold active:scale-95 cursor-pointer transition shadow-md group"
+            title="Device Local Vault (100% On-Device Private Storage & JSON Backup)"
+          >
+            <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[10px]">
+              <HardDrive className="w-3 h-3" />
+            </div>
+            <span className="font-mono text-[11px] text-emerald-400 font-bold">
+              Vault ({finds.length})
+            </span>
+          </button>
 
           {/* Android PWA Install to Home Screen Button */}
           {isInstallable && (
@@ -447,31 +270,6 @@ export default function App() {
           >
             <HelpCircle className="w-4 h-4" />
           </button>
-
-          {/* Account Profile / Sign In Pill */}
-          {currentUser ? (
-            <button
-              type="button"
-              onClick={() => setIsAuthModalOpen(true)}
-              className="flex items-center space-x-1.5 bg-stone-900/85 hover:bg-stone-800 border border-stone-750 backdrop-blur-xl px-2.5 py-1.5 rounded-2xl text-xs text-stone-200 active:scale-95 cursor-pointer transition shadow-md"
-              title="Account Settings"
-            >
-              <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-[10px]">
-                {currentUser.displayName ? currentUser.displayName[0].toUpperCase() : 'D'}
-              </div>
-              <span className="hidden md:inline max-w-[80px] truncate">
-                {currentUser.displayName || 'Detectorist'}
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsAuthModalOpen(true)}
-              className="bg-stone-900/85 hover:bg-stone-800 border border-stone-750 text-amber-400 backdrop-blur-xl px-2.5 py-1.5 rounded-2xl text-xs font-semibold active:scale-95 cursor-pointer transition shadow-md"
-            >
-              Sign In
-            </button>
-          )}
         </div>
       </header>
 
@@ -493,20 +291,7 @@ export default function App() {
           </span>
         </button>
 
-        {/* 2. Google AI Lens / Artifact Identifier */}
-        <button
-          type="button"
-          onClick={() => setActiveDrawer('aiScanner')}
-          className="group relative flex items-center justify-center w-12 h-12 sm:w-13 sm:h-13 rounded-2xl bg-stone-900/90 hover:bg-stone-850 active:scale-95 text-amber-400 border border-amber-500/40 shadow-xl backdrop-blur-xl cursor-pointer transition"
-          title="Google Gemini AI Artifact Lens"
-        >
-          <Sparkles className="w-6 h-6 stroke-[2]" />
-          <span className="absolute right-14 sm:right-16 bg-stone-900/95 border border-stone-750 text-stone-100 text-xs font-semibold px-2.5 py-1 rounded-xl shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            Google AI Lens
-          </span>
-        </button>
-
-        {/* 3. Finds Logbook & Hoards */}
+        {/* 2. Finds Logbook */}
         <button
           type="button"
           onClick={() => setActiveDrawer('findsList')}
@@ -575,46 +360,22 @@ export default function App() {
           onUpdatePin={(lat, lng) => handlePinChange(lat, lng)}
           proximityResult={proximityResult}
           onSaveFind={handleSaveFind}
-          userId={currentUser?.uid || 'guest-detectorist'}
-          userDisplayName={currentUser?.displayName || 'Detectorist'}
+          userId="device-owner"
+          userDisplayName="Detectorist"
           isOnline={isOnline}
-          onOfflineQueued={refreshPendingCount}
-          prefillData={formPrefill}
           onSaved={() => {
-            setFormPrefill(null);
             setActiveDrawer(null);
           }}
         />
       </SlideDrawer>
 
-      {/* Drawer B: Google Gemini AI Artifact Lens */}
-      <SlideDrawer
-        isOpen={activeDrawer === 'aiScanner'}
-        onClose={() => setActiveDrawer(null)}
-        title="Google AI Numismatic Lens"
-        icon={<Sparkles className="w-5 h-5" />}
-        subtitle="Ruler, period, PAS classification & live valuation"
-      >
-        <AiScannerDrawer
-          onTransferToLogger={handleTransferFromAi}
-          onClose={() => setActiveDrawer(null)}
-        />
-      </SlideDrawer>
-
-      {/* Drawer C: Field Logbook & Saved Finds */}
+      {/* Drawer B: Field Logbook & Recorded Finds */}
       <SlideDrawer
         isOpen={activeDrawer === 'findsList'}
         onClose={() => setActiveDrawer(null)}
-        title="Field Logbook & Hoards"
+        title="Field Logbook & Recorded Finds"
         icon={<Coins className="w-5 h-5" />}
         subtitle={`${finds.length} ground find${finds.length === 1 ? '' : 's'} recorded`}
-        badge={
-          totalEstimatedValue > 0 ? (
-            <span className="text-[10px] font-mono bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded-full font-bold">
-              £{Math.round(totalEstimatedValue).toLocaleString()} Hoard Est.
-            </span>
-          ) : undefined
-        }
       >
         <FindsList
           finds={finds}
@@ -622,6 +383,7 @@ export default function App() {
           onDeleteFind={handleDeleteFind}
           onNavigateToMap={handleNavigateToMap}
           onOpenShareModal={find => setShareFindTarget(find)}
+          onOpenVaultModal={() => setIsVaultModalOpen(true)}
           className="space-y-5 text-stone-100 pb-8"
         />
       </SlideDrawer>
@@ -666,9 +428,11 @@ export default function App() {
         onClose={() => setShareFindTarget(null)}
       />
 
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+      <LocalVaultModal
+        isOpen={isVaultModalOpen}
+        onClose={() => setIsVaultModalOpen(false)}
+        finds={finds}
+        onVaultUpdated={refreshLocalFinds}
       />
 
       <TreasureActModal

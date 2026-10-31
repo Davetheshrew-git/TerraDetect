@@ -5,11 +5,9 @@ import {
   Copy,
   Check,
   Send,
-  Sparkles,
-  ShieldAlert,
   Coins
 } from 'lucide-react';
-import { MetalFind } from '../types';
+import { MetalFind, isPreciousTreasureCandidate } from '../types';
 
 interface ShareFindModalProps {
   find: MetalFind | null;
@@ -22,57 +20,45 @@ export const ShareFindModal: React.FC<ShareFindModalProps> = ({ find, isOpen, on
 
   if (!isOpen || !find) return null;
 
-  const val = find.aiAnalysis;
   const locationLabel = find.generalLocation || 'United Kingdom';
-  const valueText = val
-    ? `Est. Auction Range: £${val.estimatedValueMin} - £${val.estimatedValueMax} (${val.conditionGrade})`
-    : '';
+  const isTreasure = isPreciousTreasureCandidate(find);
 
-  const shareText = `⛏️ Check out my latest metal detecting ground find with TerraDetect!
+  const shareText = `⛏️ Recorded a metal detecting ground find with TerraDetect UK!
 🪙 ${find.title}
 📍 Region: ${locationLabel}
 ⚡ VDI: ${find.targetVdi || 'N/A'} • Depth: ${find.depth || 'Surface'} • Metal: ${find.metalType}
-${valueText ? `💎 ${valueText}\n` : ''}${val?.isPotentialTreasure ? '🏛️ Potential UK Treasure Act 1996 discovery\n' : ''}#metaldetecting #detectorist #UKArchaeology #treasure`;
+${isTreasure ? '🏛️ Potential UK Treasure Act 1996 discovery\n' : ''}#metaldetecting #detectorist #UKArchaeology #treasure`;
 
-  const appUrl = window.location.origin;
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const twitterHref = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+    shareText
+  )}&url=${encodeURIComponent(appUrl)}`;
+
+  const facebookHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+    appUrl
+  )}&quote=${encodeURIComponent(shareText)}`;
+
+  const whatsappHref = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+    `${shareText}\n${appUrl}`
+  )}`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shareText);
+    navigator.clipboard.writeText(shareText).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
-
-  const handleTwitterShare = () => {
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-      shareText
-    )}&url=${encodeURIComponent(appUrl)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleFacebookShare = () => {
-    const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-      appUrl
-    )}&quote=${encodeURIComponent(shareText)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleWhatsAppShare = () => {
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(
-      `${shareText}\n${appUrl}`
-    )}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleNativeShare = async () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `TerraDetect: ${find.title}`,
+          title: `TerraDetect UK: ${find.title}`,
           text: shareText,
           url: appUrl
         });
-      } catch (err) {
-        // User canceled or unsupported
+      } catch {
+        // User dismissed share sheet
       }
     } else {
       handleCopy();
@@ -90,12 +76,13 @@ ${valueText ? `💎 ${valueText}\n` : ''}${val?.isPotentialTreasure ? '🏛️ P
             </div>
             <div>
               <h3 className="font-bold text-sm text-stone-100">Share Ground Find</h3>
-              <p className="text-[11px] text-stone-400">Export find card to social networks</p>
+              <p className="text-[11px] text-stone-400">Export find card (exact GPS protected)</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 hover:bg-stone-800 rounded-xl text-stone-400 hover:text-stone-200"
+            className="p-1.5 hover:bg-stone-800 rounded-xl text-stone-400 hover:text-stone-200 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -122,60 +109,61 @@ ${valueText ? `💎 ${valueText}\n` : ''}${val?.isPotentialTreasure ? '🏛️ P
               <h4 className="font-bold text-xs sm:text-sm text-stone-100 line-clamp-1">
                 {find.title}
               </h4>
-              {val && (
-                <p className="text-[11px] font-mono text-stone-300">
-                  Est. £{val.estimatedValueMin} – £{val.estimatedValueMax} ({val.conditionGrade})
-                </p>
-              )}
-              {val?.isPotentialTreasure && (
-                <span className="inline-block text-[9px] font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30 px-1.5 py-0.2 rounded">
+              <p className="text-[11px] font-mono text-stone-400">
+                Depth: {find.depth || 'Surface'} • VDI: {find.targetVdi || 'N/A'}
+              </p>
+              {isTreasure && (
+                <span className="inline-block text-[9px] font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30 px-1.5 py-0.5 rounded">
                   Treasure Act 1996
                 </span>
               )}
             </div>
           </div>
 
-          {/* Share Buttons */}
+          {/* Share Links */}
           <div className="space-y-2">
             <span className="text-xs font-mono uppercase text-stone-400 font-semibold block">
               Choose Platform:
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
-              {/* Twitter / X */}
-              <button
-                onClick={handleTwitterShare}
+              <a
+                href={twitterHref}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="py-2.5 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-sky-500/50 text-stone-200 transition flex items-center justify-center space-x-2"
               >
                 <svg className="w-4 h-4 fill-current text-sky-400" viewBox="0 0 24 24">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
                 <span>X / Twitter</span>
-              </button>
+              </a>
 
-              {/* Facebook */}
-              <button
-                onClick={handleFacebookShare}
+              <a
+                href={facebookHref}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="py-2.5 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-blue-500/50 text-stone-200 transition flex items-center justify-center space-x-2"
               >
                 <svg className="w-4 h-4 fill-current text-blue-500" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
                 <span>Facebook</span>
-              </button>
+              </a>
 
-              {/* WhatsApp */}
-              <button
-                onClick={handleWhatsAppShare}
+              <a
+                href={whatsappHref}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="py-2.5 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-emerald-500/50 text-stone-200 transition flex items-center justify-center space-x-2"
               >
                 <Send className="w-4 h-4 text-emerald-400" />
                 <span>WhatsApp</span>
-              </button>
+              </a>
 
-              {/* Web Share / Mobile */}
               <button
+                type="button"
                 onClick={handleNativeShare}
-                className="py-2.5 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-amber-500/50 text-stone-200 transition flex items-center justify-center space-x-2"
+                className="py-2.5 px-3 rounded-xl bg-stone-950 hover:bg-stone-800 border border-stone-800 hover:border-amber-500/50 text-stone-200 transition flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <Share2 className="w-4 h-4 text-amber-400" />
                 <span>More Apps</span>
@@ -186,8 +174,9 @@ ${valueText ? `💎 ${valueText}\n` : ''}${val?.isPotentialTreasure ? '🏛️ P
           {/* Copy Text Card */}
           <div className="pt-2 border-t border-stone-800">
             <button
+              type="button"
               onClick={handleCopy}
-              className="w-full py-2.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold flex items-center justify-center space-x-2 transition"
+              className="w-full py-2.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer"
             >
               {copied ? (
                 <>
